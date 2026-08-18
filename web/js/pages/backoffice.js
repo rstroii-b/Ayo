@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 import { realtimeClient } from '../realtime.js';
 
 if (requireLogin('/backoffice.html')) {
@@ -108,9 +108,9 @@ function orderCardHtml(order, columnKey) {
   return `
     <div class="ocard ${COLUMNS.find((c) => c.key === columnKey).cls}">
       <div class="crow"><span class="code">#SV-${order.id}</span><span class="state-msg">${elapsedMin} min</span></div>
-      <div class="client">${order.client_first_name}</div>
-      <div class="items">${order.items_summary}</div>
-      ${order.note_livreur ? `<div class="note">"${order.note_livreur}"</div>` : ''}
+      <div class="client">${escapeHtml(order.client_first_name)}</div>
+      <div class="items">${escapeHtml(order.items_summary)}</div>
+      ${order.note_livreur ? `<div class="note">"${escapeHtml(order.note_livreur)}"</div>` : ''}
       <span class="total">${formatEuros(order.total_cents)}</span>
       ${actions}
     </div>

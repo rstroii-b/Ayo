@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 
 if (requireLogin('/backoffice-history.html')) {
   init();
@@ -35,7 +35,7 @@ function rowHtml(order) {
 
   return `
     <div class="mrow">
-      <div class="mname">#SV-${order.id} — ${order.client_first_name}<div class="d">${order.items_summary || 'Aucun détail'}</div></div>
+      <div class="mname">#SV-${order.id} — ${escapeHtml(order.client_first_name)}<div class="d">${order.items_summary ? escapeHtml(order.items_summary) : 'Aucun détail'}</div></div>
       <div class="mprice">${formatEuros(order.total_cents)}</div>
       <div class="mtoggle">
         <span class="pill ${order.status === 'delivered' ? 'ok' : 'warn'}" style="padding:4px 10px;font-size:11px;">${STATUS_LABEL[order.status]}</span>

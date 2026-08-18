@@ -47,6 +47,14 @@ final class MenuController
             }
         }
 
+        $categoryCheck = Database::connection()->prepare(
+            'SELECT id FROM menu_categories WHERE id = ? AND restaurant_id = ?'
+        );
+        $categoryCheck->execute([$body['category_id'], $routeArgs['id']]);
+        if ($categoryCheck->fetch() === false) {
+            return JsonResponse::error($response, 422, "Cette catégorie n'appartient pas à ce restaurant");
+        }
+
         $stmt = Database::connection()->prepare(
             'INSERT INTO menu_items (restaurant_id, category_id, name, description, price_cents, photo_url, allergenes)
              VALUES (?, ?, ?, ?, ?, ?, ?)'

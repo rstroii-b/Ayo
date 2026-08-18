@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout, currentUser } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
 import { realtimeClient } from '../realtime.js';
 
@@ -107,11 +107,11 @@ function activeOrderHtml(order) {
 
   return `
     <div class="cart-block">
-      <p class="sechead" style="margin:14px 0 4px;">${order.restaurant_name}</p>
-      <p class="state-msg" style="padding:0 0 10px;">${order.restaurant_adresse}</p>
+      <p class="sechead" style="margin:14px 0 4px;">${escapeHtml(order.restaurant_name)}</p>
+      <p class="state-msg" style="padding:0 0 10px;">${escapeHtml(order.restaurant_adresse)}</p>
       <div class="sumrow"><span>Livrer à</span><span></span></div>
-      <p style="padding:0 4px 10px;font-size:13.5px;font-weight:600;">${order.adresse_livraison}</p>
-      ${order.note_livreur ? `<p class="state-msg" style="padding:0 4px 10px;">"${order.note_livreur}"</p>` : ''}
+      <p style="padding:0 4px 10px;font-size:13.5px;font-weight:600;">${escapeHtml(order.adresse_livraison)}</p>
+      ${order.note_livreur ? `<p class="state-msg" style="padding:0 4px 10px;">"${escapeHtml(order.note_livreur)}"</p>` : ''}
       <div class="sumrow total"><span>Ta part</span><span>${formatEuros(order.delivery_fee_cents)}</span></div>
     </div>
     ${next ? `<button class="btn btn-primary btn-block" data-action="${next.action}" data-id="${order.id}" style="margin:0 20px;width:calc(100% - 40px);">${next.label}</button>` : ''}
@@ -121,11 +121,11 @@ function activeOrderHtml(order) {
 function availableOrderHtml(order) {
   return `
     <div class="cart-block">
-      <p class="sechead" style="margin:14px 0 4px;">${order.restaurant_name}</p>
-      <p class="state-msg" style="padding:0 0 10px;">${order.restaurant_adresse} → ${order.adresse_livraison}</p>
+      <p class="sechead" style="margin:14px 0 4px;">${escapeHtml(order.restaurant_name)}</p>
+      <p class="state-msg" style="padding:0 0 10px;">${escapeHtml(order.restaurant_adresse)} → ${escapeHtml(order.adresse_livraison)}</p>
       <div class="sumrow"><span>Frais de livraison</span><span>${formatEuros(order.delivery_fee_cents)}</span></div>
       <div class="sumrow"><span>Plats</span><span></span></div>
-      <p class="state-msg" style="padding:0 4px 10px;">${order.items_summary}</p>
+      <p class="state-msg" style="padding:0 4px 10px;">${escapeHtml(order.items_summary)}</p>
     </div>
     <button class="btn btn-primary btn-block" data-claim="${order.id}" style="margin:0 20px 20px;width:calc(100% - 40px);">Prendre cette course</button>
   `;

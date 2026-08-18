@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml, safeImageUrl } from '../format.js';
 
 let restaurantId = null;
 
@@ -29,23 +29,27 @@ async function init() {
 }
 
 function categoryTableHtml(category) {
-  const rows = category.items.map((item) => `
+  const rows = category.items.map((item) => {
+    const photoUrl = safeImageUrl(item.photo_url);
+
+    return `
     <div class="mrow">
-      ${item.photo_url
-        ? `<img src="${escapeAttr(item.photo_url)}" alt="" style="width:38px;height:38px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
+      ${photoUrl
+        ? `<img src="${escapeHtml(photoUrl)}" alt="" style="width:38px;height:38px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
         : '<div style="width:38px;height:38px;border-radius:8px;background:var(--surface-alt);flex-shrink:0;"></div>'}
-      <div class="mname">${item.name}${item.description ? `<div class="d">${item.description}</div>` : ''}</div>
+      <div class="mname">${escapeHtml(item.name)}${item.description ? `<div class="d">${escapeHtml(item.description)}</div>` : ''}</div>
       <div class="mprice">${formatEuros(item.price_cents)}</div>
       <div class="mtoggle">
-        <button class="sw ${item.is_available ? 'on' : 'off'}" data-item-id="${item.id}" data-available="${item.is_available ? 1 : 0}" aria-label="Disponibilité de ${item.name}"></button>
+        <button class="sw ${item.is_available ? 'on' : 'off'}" data-item-id="${item.id}" data-available="${item.is_available ? 1 : 0}" aria-label="Disponibilité de ${escapeHtml(item.name)}"></button>
         ${item.is_available ? 'Actif' : 'Épuisé'}
       </div>
       <button class="btn btn-ghost" type="button" data-photo-item-id="${item.id}" style="padding:6px 10px;font-size:11.5px;">Photo</button>
     </div>
-  `).join('') || '<div class="mrow"><p class="state-msg" style="margin:0;">Aucun plat dans cette catégorie.</p></div>';
+  `;
+  }).join('') || '<div class="mrow"><p class="state-msg" style="margin:0;">Aucun plat dans cette catégorie.</p></div>';
 
   return `
-    <p class="sectitle">${category.name}</p>
+    <p class="sectitle">${escapeHtml(category.name)}</p>
     <div class="mtable">
       <div class="mrow head"><div style="width:38px;flex-shrink:0;"></div><div class="mname">Plat</div><div class="mprice">Prix</div><div class="mtoggle">Disponible</div><div style="width:64px;flex-shrink:0;"></div></div>
       ${rows}
@@ -70,7 +74,7 @@ async function loadMenu() {
     <form class="inline-form" id="item-form">
       <div class="field">
         <select name="category_id" required>
-          ${categories.map((c) => `<option value="${c.id}">${c.name}</option>`).join('')}
+          ${categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
       </div>
       <div class="field"><input name="name" placeholder="Nom du plat" required></div>
@@ -86,10 +90,6 @@ async function loadMenu() {
 
   content.querySelectorAll('.sw').forEach((btn) => btn.addEventListener('click', onToggleAvailability));
   content.querySelectorAll('[data-photo-item-id]').forEach((btn) => btn.addEventListener('click', onEditPhoto));
-}
-
-function escapeAttr(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 async function onEditPhoto(event) {

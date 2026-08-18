@@ -17,9 +17,17 @@ final class AuthController
         $body = (array) $request->getParsedBody();
 
         foreach (['email', 'password', 'first_name', 'last_name', 'role'] as $field) {
-            if (empty($body[$field])) {
+            if (empty($body[$field]) || !is_string($body[$field])) {
                 return JsonResponse::error($response, 422, 'Champ manquant', $field);
             }
+        }
+
+        if (strlen($body['password']) < 8) {
+            return JsonResponse::error($response, 422, 'Le mot de passe doit contenir au moins 8 caractères');
+        }
+
+        if (!filter_var($body['email'], FILTER_VALIDATE_EMAIL)) {
+            return JsonResponse::error($response, 422, 'Adresse email invalide');
         }
 
         if (!in_array($body['role'], ['client', 'restaurant_owner', 'driver'], true)) {
@@ -78,7 +86,7 @@ final class AuthController
     {
         $body = (array) $request->getParsedBody();
 
-        if (empty($body['email']) || empty($body['password'])) {
+        if (empty($body['email']) || empty($body['password']) || !is_string($body['email']) || !is_string($body['password'])) {
             return JsonResponse::error($response, 422, 'Email et mot de passe requis');
         }
 

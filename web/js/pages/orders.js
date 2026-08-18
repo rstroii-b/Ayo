@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 
 const STATUS_LABELS = {
   pending: 'Envoyée',
@@ -28,7 +28,7 @@ function orderRowHtml(order) {
   return `
     <a class="rcard" href="/suivi.html?order=${order.id}" style="align-items:center;">
       <div class="cline-info">
-        <div class="cline-name">${order.restaurant_name}</div>
+        <div class="cline-name">${escapeHtml(order.restaurant_name)}</div>
         <span class="state-msg">${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
       </div>
       <div style="text-align:right;">

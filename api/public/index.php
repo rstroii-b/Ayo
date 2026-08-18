@@ -22,7 +22,11 @@ $dotenv->load();
 
 $app = AppFactory::create();
 $app->addBodyParsingMiddleware();
-$app->addErrorMiddleware(true, true, true);
+
+// Les traces d'erreur (chemins serveur, requêtes SQL, structure interne) ne doivent jamais
+// être renvoyées au client — seul un APP_DEBUG=true explicite (dev local) les affiche.
+$debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
+$app->addErrorMiddleware($debug, true, true);
 
 // CORS pour le développement local (front et API sur des ports différents).
 $app->add(function ($request, $handler) {

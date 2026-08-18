@@ -1,5 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
+import { escapeHtml } from '../format.js';
 
 let restaurantId = null;
 
@@ -50,9 +51,9 @@ function renderForm(restaurant) {
   content.innerHTML = `
     <p class="sectitle">Fiche restaurant</p>
     <form class="form" id="settings-form" style="padding:0;max-width:420px;">
-      <div class="field"><label for="name">Nom du restaurant</label><input id="name" name="name" value="${escapeAttr(restaurant.name)}" required></div>
-      <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" value="${escapeAttr(restaurant.cuisine_origine ?? '')}" placeholder="Sénégal, Cameroun…"></div>
-      <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" value="${escapeAttr(restaurant.adresse)}" required></div>
+      <div class="field"><label for="name">Nom du restaurant</label><input id="name" name="name" value="${escapeHtml(restaurant.name)}" required></div>
+      <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" value="${escapeHtml(restaurant.cuisine_origine ?? '')}" placeholder="Sénégal, Cameroun…"></div>
+      <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" value="${escapeHtml(restaurant.adresse)}" required></div>
       <div class="field"><label for="lat">Latitude</label><input id="lat" name="lat" type="number" step="any" value="${restaurant.lat}" required></div>
       <div class="field"><label for="lng">Longitude</label><input id="lng" name="lng" type="number" step="any" value="${restaurant.lng}" required></div>
       <button type="submit" class="btn btn-primary">Enregistrer</button>
@@ -62,10 +63,6 @@ function renderForm(restaurant) {
   `;
 
   document.getElementById('settings-form').addEventListener('submit', onSubmit);
-}
-
-function escapeAttr(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 async function onSubmit(event) {

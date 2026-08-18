@@ -2,7 +2,7 @@ import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
 import { getAddress } from '../address.js';
 import { getCart, setQuantity, cartSubtotalCents, clearCart } from '../cart.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 
 // Pas de géocodage dans ce squelette — position fixe (Paris) pour la démo,
 // seule l'adresse texte saisie par le client est réellement utilisée pour la livraison.
@@ -31,12 +31,12 @@ function renderCart() {
   document.getElementById('cart-lines').innerHTML = cart.items.map((line) => `
     <div class="cart-line">
       <div class="qty" data-item-id="${line.menuItemId}">
-        <button type="button" data-delta="-1" aria-label="Diminuer la quantité de ${line.name}">−</button>
+        <button type="button" data-delta="-1" aria-label="Diminuer la quantité de ${escapeHtml(line.name)}">−</button>
         <span class="n">${line.quantity}</span>
-        <button type="button" data-delta="1" aria-label="Augmenter la quantité de ${line.name}">+</button>
+        <button type="button" data-delta="1" aria-label="Augmenter la quantité de ${escapeHtml(line.name)}">+</button>
       </div>
       <div class="cline-info">
-        <div class="cline-name">${line.name}</div>
+        <div class="cline-name">${escapeHtml(line.name)}</div>
         <span class="price">${formatEuros(line.priceCents * line.quantity)}</span>
       </div>
     </div>

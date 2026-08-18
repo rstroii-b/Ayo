@@ -1,12 +1,13 @@
 import { apiFetch } from '../api.js';
+import { escapeHtml } from '../format.js';
 
 function restaurantCardHtml(restaurant) {
   return `
     <a class="rcard" href="/restaurant.html?id=${restaurant.id}">
       <div class="rphoto"></div>
       <div class="rinfo">
-        <div class="rname">${restaurant.name}</div>
-        ${restaurant.cuisine_origine ? `<span class="rtag">${restaurant.cuisine_origine}</span>` : ''}
+        <div class="rname">${escapeHtml(restaurant.name)}</div>
+        ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
         ${restaurant.distance_km ? `<div class="rmeta">${restaurant.distance_km.toFixed(1)} km</div>` : ''}
       </div>
     </a>

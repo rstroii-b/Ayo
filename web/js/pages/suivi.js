@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
 import { realtimeClient } from '../realtime.js';
 
@@ -54,8 +54,8 @@ function renderDriver(order) {
   block.innerHTML = `
     <div class="cart-line" style="border-bottom:none;">
       <div class="cline-info">
-        <div class="cline-name">${order.driver.first_name}</div>
-        <span class="state-msg" style="text-transform:capitalize;">${order.driver.vehicule_type}</span>
+        <div class="cline-name">${escapeHtml(order.driver.first_name)}</div>
+        <span class="state-msg" style="text-transform:capitalize;">${escapeHtml(order.driver.vehicule_type)}</span>
       </div>
     </div>
   `;
@@ -65,7 +65,7 @@ function renderItems(order) {
   document.getElementById('items-block').innerHTML = order.items.map((item) => `
     <div class="cart-line">
       <div class="cline-info">
-        <div class="cline-name">${item.quantity}× ${item.name}</div>
+        <div class="cline-name">${item.quantity}× ${escapeHtml(item.name)}</div>
       </div>
       <span class="price">${formatEuros(item.price_cents * item.quantity)}</span>
     </div>

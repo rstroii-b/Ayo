@@ -2,6 +2,7 @@ import { requireLogin, currentUser, logout } from '../auth.js';
 import { getAddress, promptForAddress } from '../address.js';
 import { cartItemCount } from '../cart.js';
 import { pushSupported, isSubscribed, subscribeToPush } from '../push.js';
+import { escapeHtml } from '../format.js';
 
 const CHEVRON = '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
 const BELL_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>';
@@ -26,23 +27,23 @@ function render() {
   content.innerHTML = `
     <div class="cart-block" style="padding:18px 16px;margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
-        <div class="avatar" style="width:52px;height:52px;font-size:19px;">${(user.first_name?.[0] ?? '?').toUpperCase()}</div>
+        <div class="avatar" style="width:52px;height:52px;font-size:19px;">${escapeHtml((user.first_name?.[0] ?? '?').toUpperCase())}</div>
         <div>
-          <div style="font-weight:700;font-size:16px;">${user.first_name} ${user.last_name}</div>
+          <div style="font-weight:700;font-size:16px;">${escapeHtml(user.first_name)} ${escapeHtml(user.last_name)}</div>
           <span class="rtag" style="margin:0;">${ROLE_LABELS[user.role] ?? user.role}</span>
         </div>
       </div>
     </div>
 
     <div class="cart-block">
-      <div class="sumrow" style="padding:12px 4px;"><span>Email</span><span>${user.email}</span></div>
-      ${user.phone ? `<div class="sumrow" style="padding:12px 4px;"><span>Téléphone</span><span>${user.phone}</span></div>` : ''}
+      <div class="sumrow" style="padding:12px 4px;"><span>Email</span><span>${escapeHtml(user.email)}</span></div>
+      ${user.phone ? `<div class="sumrow" style="padding:12px 4px;"><span>Téléphone</span><span>${escapeHtml(user.phone)}</span></div>` : ''}
     </div>
 
     <div class="cart-block">
       <button class="sumrow" id="address-row" type="button" style="width:100%;padding:12px 4px;background:none;border:none;font-family:inherit;cursor:pointer;text-align:left;">
         <span>Adresse de livraison</span>
-        <span id="address-value" style="color:var(--ink);font-weight:600;">${getAddress() ?? 'Non renseignée'}</span>
+        <span id="address-value" style="color:var(--ink);font-weight:600;">${getAddress() ? escapeHtml(getAddress()) : 'Non renseignée'}</span>
       </button>
     </div>
 

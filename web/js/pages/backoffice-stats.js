@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
-import { formatEuros } from '../format.js';
+import { formatEuros, escapeHtml } from '../format.js';
 
 if (requireLogin('/backoffice-stats.html')) {
   init();
@@ -46,7 +46,7 @@ function topItemsHtml(items) {
     <div class="topitems">
       ${items.map((item) => `
         <div class="topitem">
-          <span class="tiname">${item.name}</span>
+          <span class="tiname">${escapeHtml(item.name)}</span>
           <div class="tibar"><div class="tibarfill" style="width:${(item.total_quantity / max) * 100}%;"></div></div>
           <span class="ticount">${item.total_quantity}</span>
         </div>
