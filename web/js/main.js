@@ -1,6 +1,7 @@
 import { initHomePage } from './pages/home.js';
 import { currentUser } from './auth.js';
 import { getAddress, promptForAddress } from './address.js';
+import { initNotifBell } from './notifications.js';
 
 const avatar = document.getElementById('avatar');
 const hello = document.getElementById('hello');
@@ -15,6 +16,7 @@ if (user) {
   avatar.textContent = '?';
   avatar.href = '/login.html';
   hello.textContent = 'Bonjour';
+  document.getElementById('notif-btn').href = '/login.html';
 }
 
 function renderAddress() {
@@ -28,4 +30,5 @@ locationBtn.addEventListener('click', () => {
 });
 
 renderAddress();
+initNotifBell();
 initHomePage();
