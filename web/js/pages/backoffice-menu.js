@@ -1,5 +1,5 @@
 import { apiFetch } from '../api.js';
-import { requireLogin } from '../auth.js';
+import { requireLogin, logout } from '../auth.js';
 import { formatEuros } from '../format.js';
 
 let restaurantId = null;
@@ -7,6 +7,11 @@ let restaurantId = null;
 if (requireLogin('/backoffice-menu.html')) {
   init();
 }
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  logout();
+  window.location.href = '/login.html';
+});
 
 async function init() {
   try {

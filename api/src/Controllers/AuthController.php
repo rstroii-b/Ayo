@@ -97,6 +97,22 @@ final class AuthController
         ]);
     }
 
+    /** GET /auth/me — profil du compte connecté (le nom n'est jamais dans le JWT). */
+    public function me(Request $request, Response $response): Response
+    {
+        $stmt = Database::connection()->prepare(
+            'SELECT id, email, phone, first_name, last_name, role FROM users WHERE id = ?'
+        );
+        $stmt->execute([$request->getAttribute('user_id')]);
+        $user = $stmt->fetch();
+
+        if ($user === false) {
+            return JsonResponse::error($response, 404, 'Compte introuvable');
+        }
+
+        return JsonResponse::ok($response, $user);
+    }
+
     /**
      * Réémet un jeton tant que l'actuel est encore valide.
      * Squelette volontairement simple — une vraie rotation de refresh

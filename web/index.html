@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Saveurs — livraison de cuisine africaine</title>
+<title>Ayo — livraison de cuisine africaine</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="./css/app.css">
 </head>
@@ -14,12 +14,12 @@
       <a class="avatar" id="avatar" href="/login.html" style="text-decoration:none;">?</a>
       <div class="idcol">
         <span class="hello" id="hello">Bonjour</span>
-        <span class="locrow" id="location">Choisir une adresse</span>
+        <button class="locrow" id="location" type="button">Choisir une adresse</button>
       </div>
     </div>
   </header>
 
-  <main class="content">
+  <main class="content with-nav">
     <h1 class="title">Qu'est-ce qui te fait envie&nbsp;?</h1>
 
     <div class="search">
@@ -42,6 +42,21 @@
       </div>
     </section>
   </main>
+
+  <nav class="bottomnav">
+    <a href="/index.html" class="active">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      Accueil
+    </a>
+    <a href="/orders.html">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-1.5 9h-13z"/><path d="M6.5 13L5 4"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
+      Commandes
+    </a>
+    <a href="/account.html">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+      Compte
+    </a>
+  </nav>
 
   <script type="module" src="./js/main.js"></script>
 </body>

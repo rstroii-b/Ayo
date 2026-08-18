@@ -40,6 +40,7 @@ $app->group('/api/v1', function ($group) use ($auth) {
     $group->post('/auth/register', [AuthController::class, 'register']);
     $group->post('/auth/login', [AuthController::class, 'login']);
     $group->post('/auth/refresh', [AuthController::class, 'refresh']);
+    $group->get('/auth/me', [AuthController::class, 'me'])->add($auth());
 
     // Restaurants & menus — lecture publique, création par le restaurateur
     $group->post('/restaurants', [RestaurantController::class, 'create'])->add($auth('restaurant_owner'));
@@ -60,6 +61,7 @@ $app->group('/api/v1', function ($group) use ($auth) {
 
     // Commandes — authentifié, rôle vérifié dans le contrôleur selon la partie prenante
     $group->post('/orders', [OrderController::class, 'create'])->add($auth('client'));
+    $group->get('/orders/mine', [OrderController::class, 'mine'])->add($auth('client'));
     $group->get('/orders/{id}', [OrderController::class, 'show'])->add($auth());
     $group->patch('/orders/{id}/status', [OrderController::class, 'updateStatus'])->add($auth());
     $group->patch('/orders/{id}/claim', [OrderController::class, 'claim'])->add($auth('driver'));

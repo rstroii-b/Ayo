@@ -1,10 +1,15 @@
 import { apiFetch } from '../api.js';
-import { requireLogin } from '../auth.js';
+import { requireLogin, logout } from '../auth.js';
 import { formatEuros } from '../format.js';
 
 if (requireLogin('/backoffice.html')) {
   init();
 }
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  logout();
+  window.location.href = '/login.html';
+});
 
 async function init() {
   try {

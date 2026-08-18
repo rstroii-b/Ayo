@@ -150,6 +150,20 @@ final class OrderController
         ], 201);
     }
 
+    /** GET /orders/mine — historique des commandes du client connecté. */
+    public function mine(Request $request, Response $response): Response
+    {
+        $stmt = Database::connection()->prepare(
+            'SELECT o.id, o.status, o.total_cents, o.created_at, r.name AS restaurant_name
+             FROM orders o JOIN restaurants r ON r.id = o.restaurant_id
+             WHERE o.client_id = ?
+             ORDER BY o.created_at DESC'
+        );
+        $stmt->execute([$request->getAttribute('user_id')]);
+
+        return JsonResponse::ok($response, ['orders' => $stmt->fetchAll()]);
+    }
+
     /** GET /orders/{id} */
     public function show(Request $request, Response $response, array $routeArgs): Response
     {

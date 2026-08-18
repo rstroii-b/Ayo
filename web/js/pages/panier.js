@@ -1,5 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
+import { getAddress } from '../address.js';
 import { getCart, setQuantity, cartSubtotalCents, clearCart } from '../cart.js';
 import { formatEuros } from '../format.js';
 
@@ -137,5 +138,9 @@ document.getElementById('checkout-btn').addEventListener('click', () => {
     confirmPayment();
   }
 });
+
+if (getAddress()) {
+  document.getElementById('address').value = getAddress();
+}
 
 renderCart();

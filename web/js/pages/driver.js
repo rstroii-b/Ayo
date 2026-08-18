@@ -1,5 +1,5 @@
 import { apiFetch } from '../api.js';
-import { requireLogin } from '../auth.js';
+import { requireLogin, logout } from '../auth.js';
 import { formatEuros } from '../format.js';
 
 const NEXT_STATUS = {
@@ -12,6 +12,12 @@ let pollTimer = null;
 
 if (requireLogin('/driver.html')) {
   document.getElementById('avatar').textContent = 'L';
+  document.getElementById('avatar').addEventListener('click', () => {
+    if (confirm('Se déconnecter ?')) {
+      logout();
+      window.location.href = '/login.html';
+    }
+  });
   init();
 }
 

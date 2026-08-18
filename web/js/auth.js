@@ -1,6 +1,6 @@
 import { apiFetch, setToken, clearToken } from './api.js';
 
-const USER_KEY = 'saveurs_user';
+const USER_KEY = 'ayo_user';
 
 export function currentUser() {
   try {
@@ -14,25 +14,25 @@ export function isLoggedIn() {
   return currentUser() !== null;
 }
 
-function persistSession(userId, role, token) {
+async function persistSession(token) {
   setToken(token);
-  localStorage.setItem(USER_KEY, JSON.stringify({ id: userId, role }));
+  // /auth/me est la source de vérité pour le profil (nom, email...) — jamais dans le JWT.
+  const profile = await apiFetch('/auth/me');
+  localStorage.setItem(USER_KEY, JSON.stringify(profile));
+
+  return profile;
 }
 
 export async function login(email, password) {
   const data = await apiFetch('/auth/login', { method: 'POST', body: { email, password } });
-  // Le rôle n'est pas renvoyé par /auth/login — décodé depuis le payload du JWT (non signé côté client, affichage seulement).
-  const role = JSON.parse(atob(data.token.split('.')[1])).role;
-  persistSession(data.user_id, role, data.token);
 
-  return { userId: data.user_id, role };
+  return persistSession(data.token);
 }
 
 export async function register(payload) {
   const data = await apiFetch('/auth/register', { method: 'POST', body: payload });
-  persistSession(data.user_id, payload.role, data.token);
 
-  return { userId: data.user_id, role: payload.role };
+  return persistSession(data.token);
 }
 
 export function logout() {

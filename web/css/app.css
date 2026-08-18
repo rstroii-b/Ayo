@@ -28,9 +28,23 @@ body{
 }
 .idcol{display:flex;flex-direction:column;gap:1px;}
 .hello{font-size:12px;color:var(--ink-dim);}
-.locrow{font-size:14px;font-weight:600;background:none;border:none;padding:0;color:var(--ink);}
+.locrow{font-size:14px;font-weight:600;background:none;border:none;padding:0;color:var(--ink);font-family:inherit;cursor:pointer;text-align:left;}
 
 .content{padding:14px 20px 40px;}
+.content.with-nav{padding-bottom:90px;}
+
+/* ---- Barre de navigation basse (pages de navigation : accueil, commandes, compte) ---- */
+.bottomnav{
+  position:fixed;bottom:0;left:0;right:0;max-width:480px;margin-inline:auto;
+  display:flex;background:var(--surface);border-top:1px solid var(--line);
+  padding:9px 8px calc(9px + env(safe-area-inset-bottom));z-index:20;
+}
+.bottomnav a{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;
+  color:var(--ink-dim);text-decoration:none;font-size:10.5px;font-weight:600;
+}
+.bottomnav a.active{color:var(--ink);}
+.bottomnav svg{display:block;}
 .title{
   font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:23px;
   line-height:1.2;margin:0 0 14px;letter-spacing:-.01em;
