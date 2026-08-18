@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Saveurs\Controllers\AuthController;
 use Saveurs\Controllers\ConnectController;
+use Saveurs\Controllers\DriverController;
 use Saveurs\Controllers\MenuController;
 use Saveurs\Controllers\OrderController;
 use Saveurs\Controllers\PaymentController;
@@ -74,6 +75,8 @@ $app->group('/api/v1', function ($group) use ($auth) {
     // App livreur
     $group->get('/driver/orders/available', [OrderController::class, 'availableForDriver'])->add($auth('driver'));
     $group->get('/driver/orders/active', [OrderController::class, 'activeForDriver'])->add($auth('driver'));
+    $group->patch('/driver/status', [DriverController::class, 'updateStatus'])->add($auth('driver'));
+    $group->post('/driver/location', [DriverController::class, 'updateLocation'])->add($auth('driver'));
 
     // Paiement — Stripe Connect (voir §5)
     $group->post('/payments/intent', [PaymentController::class, 'createIntent'])->add($auth('client'));

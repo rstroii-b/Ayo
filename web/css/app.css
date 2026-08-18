@@ -27,6 +27,13 @@ body{
   display:flex;align-items:center;justify-content:center;position:relative;text-decoration:none;
 }
 .notif-dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--chili);}
+
+/* ---- Bascule en ligne / hors ligne (app livreur) ---- */
+.sw{width:38px;height:22px;border-radius:99px;position:relative;border:none;cursor:pointer;flex-shrink:0;padding:0;}
+.sw.on{background:var(--herb);}
+.sw.on::after{content:"";position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#fff;}
+.sw.off{background:var(--line);}
+.sw.off::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;}
 .avatar{
   width:38px;height:38px;border-radius:50%;background:var(--accent);
   display:flex;align-items:center;justify-content:center;

@@ -1,6 +1,7 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { formatEuros } from '../format.js';
+import { pushSupported, subscribeToPush } from '../push.js';
 
 const NEXT_STATUS = {
   ready_for_pickup: { action: 'picked_up', label: 'Marquer récupérée' },
@@ -8,16 +9,21 @@ const NEXT_STATUS = {
   delivering: { action: 'delivered', label: 'Marquer livrée' },
 };
 
+const LOCATION_INTERVAL_MS = 45000;
+
 let pollTimer = null;
+let locationTimer = null;
 
 if (requireLogin('/driver.html')) {
   document.getElementById('avatar').textContent = 'L';
   document.getElementById('avatar').addEventListener('click', () => {
     if (confirm('Se déconnecter ?')) {
+      goOffline();
       logout();
       window.location.href = '/login.html';
     }
   });
+  document.getElementById('online-switch').addEventListener('click', toggleOnline);
   init();
 }
 
@@ -25,6 +31,51 @@ async function init() {
   checkStripeStatus();
   await refresh();
   pollTimer = setInterval(refresh, 5000);
+}
+
+function reportLocation() {
+  if (!('geolocation' in navigator)) return;
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      apiFetch('/driver/location', {
+        method: 'POST',
+        body: { lat: position.coords.latitude, lng: position.coords.longitude },
+      }).catch(() => {});
+    },
+    () => {},
+    { enableHighAccuracy: false, maximumAge: 30000 }
+  );
+}
+
+async function goOnline() {
+  await apiFetch('/driver/status', { method: 'PATCH', body: { is_online: true } });
+  document.getElementById('online-switch').className = 'sw on';
+  document.getElementById('online-label').textContent = 'En ligne';
+
+  if (pushSupported() && Notification.permission === 'default') {
+    subscribeToPush();
+  }
+
+  reportLocation();
+  locationTimer = setInterval(reportLocation, LOCATION_INTERVAL_MS);
+}
+
+async function goOffline() {
+  await apiFetch('/driver/status', { method: 'PATCH', body: { is_online: false } }).catch(() => {});
+  document.getElementById('online-switch').className = 'sw off';
+  document.getElementById('online-label').textContent = 'Hors ligne';
+  clearInterval(locationTimer);
+}
+
+function toggleOnline() {
+  const isOnline = document.getElementById('online-switch').classList.contains('on');
+
+  if (isOnline) {
+    goOffline();
+  } else {
+    goOnline();
+  }
 }
 
 async function checkStripeStatus() {

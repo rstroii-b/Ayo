@@ -232,6 +232,10 @@ final class OrderController
         // Ici, le PHP publierait l'événement sur le service temps réel (Soketi) — voir §4.
         $this->notifyClient((int) $order['client_id'], (int) $order['id'], $nextStatus);
 
+        if ($nextStatus === 'ready_for_pickup') {
+            $this->notifyNearbyDrivers((int) $order['id'], (int) $order['restaurant_id']);
+        }
+
         if ($nextStatus === 'delivered') {
             (new PayoutService())->releaseForOrder($order['id']);
         }
@@ -261,6 +265,39 @@ final class OrderController
             'body' => $body,
             'url' => "/suivi.html?order={$orderId}",
         ]);
+    }
+
+    /**
+     * Dispatch automatique — voir §6 du document d'architecture : une simple proposition
+     * poussée aux livreurs les plus proches, jamais une affectation forcée. Premier arrivé,
+     * premier servi (le UPDATE ... WHERE driver_id IS NULL dans claim() gère la course).
+     */
+    private function notifyNearbyDrivers(int $orderId, int $restaurantId): void
+    {
+        $db = Database::connection();
+
+        $stmt = $db->prepare(
+            "SELECT dp.user_id,
+                    (6371 * acos(cos(radians(r.lat)) * cos(radians(dl.lat)) *
+                    cos(radians(dl.lng) - radians(r.lng)) + sin(radians(r.lat)) * sin(radians(dl.lat)))) AS distance_km
+             FROM driver_profiles dp
+             JOIN driver_locations dl ON dl.driver_id = dp.user_id
+             JOIN restaurants r ON r.id = ?
+             WHERE dp.is_online = 1 AND dl.updated_at >= (NOW() - INTERVAL 10 MINUTE)
+             HAVING distance_km <= 5
+             ORDER BY distance_km ASC
+             LIMIT 5"
+        );
+        $stmt->execute([$restaurantId]);
+
+        $pushService = new PushService();
+        foreach ($stmt->fetchAll() as $driver) {
+            $pushService->sendToUser((int) $driver['user_id'], [
+                'title' => 'Ayo',
+                'body' => 'Une course est disponible près de toi.',
+                'url' => '/driver.html',
+            ]);
+        }
     }
 
     /** PATCH /orders/{id}/claim — un livreur prend une commande prête (jamais une affectation forcée). */
