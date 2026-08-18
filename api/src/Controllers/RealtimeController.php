@@ -67,6 +67,10 @@ final class RealtimeController
             return (int) $stmt->fetchColumn() === $userId;
         }
 
+        if (preg_match('/^private-driver\.(\d+)$/', $channel, $m)) {
+            return (int) $m[1] === $userId;
+        }
+
         return false;
     }
 }

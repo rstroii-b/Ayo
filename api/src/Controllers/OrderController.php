@@ -304,6 +304,7 @@ final class OrderController
                 'body' => 'Une course est disponible près de toi.',
                 'url' => '/driver.html',
             ]);
+            Realtime::trigger("private-driver.{$driver['user_id']}", 'order-available', ['order_id' => $orderId]);
         }
     }
 

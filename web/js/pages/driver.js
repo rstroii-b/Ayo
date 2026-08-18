@@ -1,7 +1,8 @@
 import { apiFetch } from '../api.js';
-import { requireLogin, logout } from '../auth.js';
+import { requireLogin, logout, currentUser } from '../auth.js';
 import { formatEuros } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
+import { realtimeClient } from '../realtime.js';
 
 const NEXT_STATUS = {
   ready_for_pickup: { action: 'picked_up', label: 'Marquer récupérée' },
@@ -30,7 +31,12 @@ if (requireLogin('/driver.html')) {
 async function init() {
   checkStripeStatus();
   await refresh();
-  pollTimer = setInterval(refresh, 5000);
+
+  // Temps réel (Pusher) — la liste des courses disponibles se met à jour dès qu'une commande
+  // devient éligible à proximité. Le polling toutes les 20s reste un filet de sécurité.
+  const channel = realtimeClient().subscribe(`private-driver.${currentUser().id}`);
+  channel.bind('order-available', refresh);
+  pollTimer = setInterval(refresh, 20000);
 }
 
 function reportLocation() {
