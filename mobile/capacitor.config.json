@@ -1,0 +1,9 @@
+{
+  "appId": "com.jobivoire.ayo",
+  "appName": "Ayo",
+  "webDir": "../web",
+  "backgroundColor": "#14181B",
+  "android": {
+    "backgroundColor": "#14181B"
+  }
+}

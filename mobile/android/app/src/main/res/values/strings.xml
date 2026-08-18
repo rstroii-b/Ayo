@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ayo</string>
+    <string name="title_activity_main">Ayo</string>
+    <string name="package_name">com.jobivoire.ayo</string>
+    <string name="custom_url_scheme">com.jobivoire.ayo</string>
+</resources>
