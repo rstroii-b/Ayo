@@ -92,6 +92,71 @@ jusqu'à `delivered`, déclenchement des deux virements — fonctionne et échou
 (`502` avec message Stripe explicite, lignes `payouts` en `statut: failed`) puisque les comptes
 Connect n'existent pas encore. Remplacez les clés par les vraies pour aller jusqu'au bout.
 
+## 5. Déploiement en production (IONOS Hébergement Web Plus)
+
+Vérifié sur la fiche officielle de l'offre : PHP 8.2/8.3/8.4, bases MariaDB, accès SSH/SFTP,
+support `.htaccess`, SSL inclus — compatible avec ce projet tel quel.
+
+**Architecture recommandée : deux domaines/sous-domaines séparés.**
+
+```text
+votredomaine.fr        → dossier web/            (front statique)
+api.votredomaine.fr     → dossier api/public/     (API — vendor/, src/, .env restent HORS de
+                                                     la racine web, jamais accessibles par une URL)
+```
+
+Ne mettez jamais `api/` (avec `vendor/` et `.env`) directement sous la racine web du domaine
+principal — n'importe qui pourrait alors télécharger `.env` (vos clés Stripe/JWT) via une URL.
+Le sous-domaine dédié, pointé précisément sur `api/public/`, évite ce problème par construction.
+
+**Étapes :**
+
+1. **Panneau IONOS** → activer/récupérer les identifiants SSH, créer le sous-domaine
+   `api.votredomaine.fr`, et pointer sa racine web sur le dossier où vous déploierez `api/public/`
+   (le reste de `api/` — `src/`, `vendor/`, `.env` — doit exister sur le serveur mais **en dehors**
+   de ce dossier public, par exemple un niveau au-dessus).
+2. **Connexion SSH** puis clone du dépôt :
+
+   ```bash
+   git clone https://github.com/rstroii-b/Ayo.git
+   cd Ayo/api
+   ```
+
+3. **Composer** (pas forcément préinstallé — l'installer en local à l'utilisateur) :
+
+   ```bash
+   curl -sS https://getcomposer.org/installer | php
+   php composer.phar install --no-dev --optimize-autoloader
+   ```
+
+4. **Base de données** : créez une base MariaDB depuis le panneau IONOS (notez host/utilisateur/
+   mot de passe/nom — le host n'est généralement pas `127.0.0.1` en mutualisé, vérifiez la valeur
+   exacte affichée dans le panneau), puis importez le schéma :
+
+   ```bash
+   mysql -h <host-fourni-par-ionos> -u <user> -p <nom_base> < ../database/schema.sql
+   ```
+
+5. **`api/.env`** (créer sur le serveur, ne jamais committer) : renseignez les vraies valeurs
+   `DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, un `JWT_SECRET` fort et unique (`openssl rand -hex 32`),
+   `CORS_ORIGIN=https://votredomaine.fr`, vos clés Stripe (test ou live selon si vous êtes prêt à
+   encaisser réellement), `DISPATCH_COMMISSION_PCT`.
+6. **`web/js/api.js`** : remplacez `https://api.votredomaine.fr/api/v1` par votre vrai sous-domaine
+   si différent, puis déployez le contenu de `web/` sur la racine du domaine principal (SFTP ou
+   `git clone` + configuration du répertoire web dans le panneau IONOS).
+7. **SSL** : vérifiez qu'IONOS a bien émis un certificat (Let's Encrypt, généralement automatique)
+   sur les deux domaines — obligatoire pour Stripe.
+8. **Webhook Stripe** : dans le Dashboard Stripe (mode Live si vous passez en prod réelle) →
+   Developers → Webhooks → Add endpoint → `https://api.votredomaine.fr/api/v1/webhooks/stripe`,
+   sélectionnez `payment_intent.succeeded`, `payment_intent.payment_failed`, `account.updated`,
+   puis copiez le vrai signing secret dans `STRIPE_WEBHOOK_SECRET` (remplace le Stripe CLI, qui
+   n'est qu'un outil de dev local).
+9. Si vous passez en clés Stripe **Live**, refaites l'onboarding Connect (restaurateur + livreur)
+   en mode Live — les comptes créés en mode test ne sont pas valables en Live.
+
+Pas de service à faire tourner en arrière-plan (pas de queue, pas de WebSocket dans ce squelette)
+— l'hébergement mutualisé classique (PHP-FPM + Apache, sur requête) suffit tel quel.
+
 ## Ce qui est fait / pas fait
 
 Fait : inscription/connexion (JWT), liste + fiche + menu restaurant, création de restaurant,
