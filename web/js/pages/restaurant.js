@@ -21,9 +21,11 @@ function renderCartBar() {
 }
 
 function menuItemHtml(item, restaurantName) {
+  const photoStyle = item.photo_url ? ` style="background-image:url('${item.photo_url}')"` : '';
+
   return `
     <div class="menu-item">
-      <div class="ithumb"></div>
+      <div class="ithumb"${photoStyle}></div>
       <div class="iinfo">
         <div class="iname">${item.name}</div>
         ${item.description ? `<div class="idesc">${item.description}</div>` : ''}
