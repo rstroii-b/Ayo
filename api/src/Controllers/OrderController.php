@@ -7,6 +7,7 @@ namespace Saveurs\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Saveurs\Services\PayoutService;
+use Saveurs\Services\PushService;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
 
@@ -229,12 +230,37 @@ final class OrderController
             ->execute([$order['id'], $nextStatus, $role]);
 
         // Ici, le PHP publierait l'événement sur le service temps réel (Soketi) — voir §4.
+        $this->notifyClient((int) $order['client_id'], (int) $order['id'], $nextStatus);
 
         if ($nextStatus === 'delivered') {
             (new PayoutService())->releaseForOrder($order['id']);
         }
 
         return JsonResponse::ok($response, ['order_id' => $order['id'], 'status' => $nextStatus]);
+    }
+
+    private const STATUS_NOTIF = [
+        'accepted' => 'Ta commande a été acceptée par le restaurant.',
+        'preparing' => 'Ta commande est en préparation.',
+        'ready_for_pickup' => 'Ta commande est prête, en attente d\'un livreur.',
+        'picked_up' => 'Le livreur a récupéré ta commande.',
+        'delivering' => 'Le livreur est en route vers toi.',
+        'delivered' => 'Ta commande a été livrée. Bon appétit !',
+        'cancelled' => 'Ta commande a été annulée.',
+    ];
+
+    private function notifyClient(int $clientId, int $orderId, string $status): void
+    {
+        $body = self::STATUS_NOTIF[$status] ?? null;
+        if ($body === null) {
+            return;
+        }
+
+        (new PushService())->sendToUser($clientId, [
+            'title' => 'Ayo',
+            'body' => $body,
+            'url' => "/suivi.html?order={$orderId}",
+        ]);
     }
 
     /** PATCH /orders/{id}/claim — un livreur prend une commande prête (jamais une affectation forcée). */

@@ -208,6 +208,19 @@ CREATE TABLE payouts (
   CONSTRAINT fk_payout_order FOREIGN KEY (order_id) REFERENCES orders(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Abonnements aux notifications push (Web Push) — un navigateur/appareil par ligne.
+CREATE TABLE push_subscriptions (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id           BIGINT UNSIGNED NOT NULL,
+  endpoint          VARCHAR(512) NOT NULL,
+  p256dh            VARCHAR(255) NOT NULL,
+  auth              VARCHAR(255) NOT NULL,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_push_endpoint (endpoint(255)),
+  KEY ix_push_user (user_id),
+  CONSTRAINT fk_push_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------

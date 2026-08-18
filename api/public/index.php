@@ -7,6 +7,7 @@ use Saveurs\Controllers\ConnectController;
 use Saveurs\Controllers\MenuController;
 use Saveurs\Controllers\OrderController;
 use Saveurs\Controllers\PaymentController;
+use Saveurs\Controllers\PushController;
 use Saveurs\Controllers\RestaurantController;
 use Saveurs\Middleware\AuthMiddleware;
 use Slim\Factory\AppFactory;
@@ -81,6 +82,11 @@ $app->group('/api/v1', function ($group) use ($auth) {
     // Onboarding Stripe Connect — restaurateur ou livreur
     $group->post('/connect/onboard', [ConnectController::class, 'onboard'])->add($auth());
     $group->get('/connect/status', [ConnectController::class, 'status'])->add($auth());
+
+    // Notifications push
+    $group->get('/push/vapid-key', [PushController::class, 'vapidKey']);
+    $group->post('/push/subscribe', [PushController::class, 'subscribe'])->add($auth());
+    $group->post('/push/unsubscribe', [PushController::class, 'unsubscribe'])->add($auth());
 });
 
 $app->run();

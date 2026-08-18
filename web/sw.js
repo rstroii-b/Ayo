@@ -1,4 +1,4 @@
-const CACHE = 'ayo-static-v1';
+const CACHE = 'ayo-static-v2';
 
 const PRECACHE_URLS = [
   '/css/app.css',
@@ -8,6 +8,7 @@ const PRECACHE_URLS = [
   '/js/cart.js',
   '/js/address.js',
   '/js/notifications.js',
+  '/js/push.js',
   '/js/format.js',
   '/assets/logo.png',
   '/assets/icons/icon-192.png',
@@ -59,6 +60,38 @@ self.addEventListener('fetch', (event) => {
       }).catch(() => cached);
 
       return cached ?? network;
+    })
+  );
+});
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  const data = event.data.json();
+
+  event.waitUntil(
+    self.registration.showNotification(data.title ?? 'Ayo', {
+      body: data.body ?? '',
+      icon: '/assets/icons/icon-192.png',
+      badge: '/assets/icons/icon-192.png',
+      data: { url: data.url ?? '/index.html' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url ?? '/index.html';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => new URL(c.url).pathname === new URL(url, self.location.origin).pathname);
+
+      if (existing) {
+        return existing.focus();
+      }
+
+      return self.clients.openWindow(url);
     })
   );
 });

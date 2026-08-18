@@ -1,8 +1,10 @@
 import { requireLogin, currentUser, logout } from '../auth.js';
 import { getAddress, promptForAddress } from '../address.js';
 import { cartItemCount } from '../cart.js';
+import { pushSupported, isSubscribed, subscribeToPush } from '../push.js';
 
 const CHEVRON = '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+const BELL_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>';
 
 function menuRow(href, iconSvg, label, badge = '') {
   return `
@@ -43,6 +45,16 @@ function render() {
         <span id="address-value" style="color:var(--ink);font-weight:600;">${getAddress() ?? 'Non renseignée'}</span>
       </button>
     </div>
+
+    ${pushSupported() ? `
+    <div class="menu-list-account">
+      <button class="menu-row" id="notif-row" type="button">
+        <span class="micon">${BELL_ICON}</span>
+        Notifications
+        <span class="rowbadge" id="notif-status">…</span>
+      </button>
+    </div>
+    ` : ''}
 
     <div class="menu-list-account">
       ${menuRow(
@@ -92,6 +104,20 @@ function render() {
     logout();
     window.location.href = '/index.html';
   });
+
+  const notifRow = document.getElementById('notif-row');
+  if (notifRow) {
+    isSubscribed().then((yes) => {
+      document.getElementById('notif-status').textContent = yes ? 'Activées' : 'Désactivées';
+    });
+
+    notifRow.addEventListener('click', async () => {
+      const statusEl = document.getElementById('notif-status');
+      statusEl.textContent = '…';
+      const ok = await subscribeToPush();
+      statusEl.textContent = ok ? 'Activées' : 'Refusées';
+    });
+  }
 }
 
 if (requireLogin('/account.html')) {
