@@ -43,6 +43,7 @@ $app->group('/api/v1', function ($group) use ($auth) {
 
     // Restaurants & menus — lecture publique, création par le restaurateur
     $group->post('/restaurants', [RestaurantController::class, 'create'])->add($auth('restaurant_owner'));
+    $group->patch('/restaurants/{id}', [RestaurantController::class, 'update'])->add($auth('restaurant_owner'));
     $group->get('/restaurant/mine', [RestaurantController::class, 'mine'])->add($auth('restaurant_owner'));
     $group->get('/restaurant/mine/menu', [RestaurantController::class, 'mineMenu'])->add($auth('restaurant_owner'));
     $group->get('/restaurants', [RestaurantController::class, 'index']);

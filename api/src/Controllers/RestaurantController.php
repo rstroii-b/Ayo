@@ -43,6 +43,34 @@ final class RestaurantController
         return JsonResponse::ok($response, ['restaurant_id' => (int) Database::connection()->lastInsertId()], 201);
     }
 
+    /** PATCH /restaurants/{id} — le restaurateur corrige sa fiche (nom, adresse, position...). */
+    public function update(Request $request, Response $response, array $routeArgs): Response
+    {
+        $stmt = Database::connection()->prepare('SELECT owner_id FROM restaurants WHERE id = ?');
+        $stmt->execute([$routeArgs['id']]);
+        $ownerId = $stmt->fetchColumn();
+
+        if ($ownerId === false || (int) $ownerId !== (int) $request->getAttribute('user_id')) {
+            return JsonResponse::error($response, 403, "Ce restaurant ne vous appartient pas");
+        }
+
+        $body = (array) $request->getParsedBody();
+        $allowed = ['name', 'adresse', 'lat', 'lng', 'cuisine_origine', 'zone_id'];
+        $fields = array_intersect_key($body, array_flip($allowed));
+
+        if ($fields === []) {
+            return JsonResponse::error($response, 422, 'Aucun champ modifiable fourni');
+        }
+
+        $set = implode(', ', array_map(fn ($f) => "{$f} = ?", array_keys($fields)));
+        $args = array_values($fields);
+        $args[] = $routeArgs['id'];
+
+        Database::connection()->prepare("UPDATE restaurants SET {$set} WHERE id = ?")->execute($args);
+
+        return JsonResponse::ok($response, ['updated' => true]);
+    }
+
     /** GET /restaurant/mine — le restaurateur retrouve sa propre fiche (back-office). */
     public function mine(Request $request, Response $response): Response
     {

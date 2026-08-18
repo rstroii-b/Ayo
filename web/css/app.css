@@ -1,10 +1,10 @@
-/* Design tokens — palette épices, vive sans être criarde (compromis entre la maquette
-   d'origine et la version désaturée précédente). */
+/* Design tokens — inspirés d'UberEats (noir + vert vif) et Deliveroo (turquoise),
+   rupture volontaire avec la palette "épices" précédente. */
 :root{
-  --bg:#F7F2E7; --surface:#FFFFFF; --surface-alt:#F1E8D8;
-  --ink:#28201A; --ink-dim:#87755F; --line:#E7DAC0;
-  --accent:#DC7F2E; --accent-deep:#B6621B; --chili:#BC432E; --cola:#7E5638; --herb:#63824C;
-  --on-accent:#241610;
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface-alt:#F3F4F6;
+  --ink:#14181B; --ink-dim:#6B7280; --line:#E5E7EB;
+  --accent:#14181B; --accent-deep:#2C3237; --chili:#E23744; --cola:#0E8C82; --herb:#06C167;
+  --on-accent:#FFFFFF;
 }
 
 *{box-sizing:border-box;}
@@ -74,7 +74,7 @@ body{
 .btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--ink);}
 .btn-block{width:100%;}
 .btn:disabled{opacity:.55;cursor:not-allowed;}
-.link{color:var(--accent-deep);text-decoration:none;font-weight:600;}
+.link{color:var(--herb);text-decoration:none;font-weight:600;}
 
 /* ---- Barre supérieure avec retour (sous-pages) ---- */
 .topbar{display:flex;align-items:center;gap:12px;padding:18px 20px;}
