@@ -16,6 +16,8 @@ body{
   margin-inline:auto;
 }
 
+.brand-logo{display:block;width:150px;height:auto;margin:4px 0 10px;}
+
 .header{padding:20px 20px 4px;}
 .idrow{display:flex;align-items:center;gap:10px;}
 .avatar{
