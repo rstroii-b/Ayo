@@ -1,10 +1,9 @@
-// En local (php -S), l'API tourne sur un port séparé. En production, l'API vit sur un
-// sous-domaine dédié (ex: api.votredomaine.fr) dont la racine web pointe précisément sur
-// api/public/ — vendor/, src/ et .env restent hors de portée du web. Voir le README pour
-// la configuration IONOS. ⚠️ Remplacez l'URL ci-dessous par votre vrai sous-domaine avant déploiement.
+// En local (php -S), l'API tourne sur un port séparé. En production, l'API vit sur le
+// sous-domaine dédié api-ayo.jobivoire.com, dont la racine web pointe précisément sur
+// api/public/ — vendor/, src/ et .env restent hors de portée du web.
 const API_BASE_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname)
   ? 'http://localhost:8000/api/v1'
-  : 'https://api.votredomaine.fr/api/v1';
+  : 'https://api-ayo.jobivoire.com/api/v1';
 
 function getToken() {
   return localStorage.getItem('saveurs_token');
