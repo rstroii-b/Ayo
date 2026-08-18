@@ -1,6 +1,7 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { formatEuros } from '../format.js';
+import { realtimeClient } from '../realtime.js';
 
 if (requireLogin('/backoffice.html')) {
   init();
@@ -18,7 +19,13 @@ async function init() {
     renderStripeStatus(restaurant);
     document.getElementById('board').hidden = false;
     loadBoard();
-    setInterval(loadBoard, 5000);
+
+    // Temps réel (Pusher) — le kanban se met à jour dès qu'une commande arrive ou change de
+    // statut. Le polling toutes les 20s reste un filet de sécurité.
+    const channel = realtimeClient().subscribe(`private-restaurant.${restaurant.id}`);
+    channel.bind('new-order', loadBoard);
+    channel.bind('order-updated', loadBoard);
+    setInterval(loadBoard, 20000);
   } catch (error) {
     if (error.status === 404) {
       document.getElementById('setup-block').hidden = false;

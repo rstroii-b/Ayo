@@ -5,7 +5,7 @@ const API_BASE_URL = ['localhost', '127.0.0.1'].includes(window.location.hostnam
   ? 'http://localhost:8000/api/v1'
   : 'https://api-ayo.jobivoire.com/api/v1';
 
-function getToken() {
+export function getToken() {
   return localStorage.getItem('saveurs_token');
 }
 

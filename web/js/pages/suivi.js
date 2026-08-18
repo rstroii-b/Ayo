@@ -2,6 +2,7 @@ import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
 import { formatEuros } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
+import { realtimeClient } from '../realtime.js';
 
 const orderId = new URLSearchParams(window.location.search).get('order');
 
@@ -105,9 +106,13 @@ if (!orderId) {
   document.getElementById('status-header').innerHTML = '<p class="state-msg">Aucune commande à afficher.</p>';
 } else if (requireLogin(`/suivi.html?order=${orderId}`)) {
   poll();
-  // Pas de temps réel (Soketi non branché dans ce squelette) — on interroge le serveur
-  // toutes les 4s. Voir §4 du document d'architecture pour la version WebSocket.
-  pollTimer = setInterval(poll, 4000);
+
+  // Temps réel (Pusher) — mise à jour instantanée. Le polling toutes les 15s reste un filet
+  // de sécurité si la connexion WebSocket tombe (réseau, onglet en arrière-plan...).
+  const channel = realtimeClient().subscribe(`private-order.${orderId}`);
+  channel.bind('status-updated', poll);
+  channel.bind('driver-assigned', poll);
+  pollTimer = setInterval(poll, 15000);
 
   // Moment le plus pertinent pour proposer les notifications — ne redemande jamais si
   // déjà accepté ou refusé (le navigateur bloque de toute façon la re-demande).

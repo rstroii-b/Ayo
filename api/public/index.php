@@ -9,6 +9,7 @@ use Saveurs\Controllers\MenuController;
 use Saveurs\Controllers\OrderController;
 use Saveurs\Controllers\PaymentController;
 use Saveurs\Controllers\PushController;
+use Saveurs\Controllers\RealtimeController;
 use Saveurs\Controllers\RestaurantController;
 use Saveurs\Middleware\AuthMiddleware;
 use Slim\Factory\AppFactory;
@@ -90,6 +91,9 @@ $app->group('/api/v1', function ($group) use ($auth) {
     $group->get('/push/vapid-key', [PushController::class, 'vapidKey']);
     $group->post('/push/subscribe', [PushController::class, 'subscribe'])->add($auth());
     $group->post('/push/unsubscribe', [PushController::class, 'unsubscribe'])->add($auth());
+
+    // Temps réel — autorisation des canaux privés Pusher
+    $group->post('/realtime/auth', [RealtimeController::class, 'auth'])->add($auth());
 });
 
 $app->run();

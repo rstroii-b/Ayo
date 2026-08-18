@@ -10,6 +10,7 @@ use Saveurs\Services\PayoutService;
 use Saveurs\Services\PushService;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\Realtime;
 
 /**
  * Transitions de statut autorisées par rôle — voir §3/§6 du document
@@ -141,6 +142,8 @@ final class OrderController
             throw $e;
         }
 
+        Realtime::trigger("private-restaurant.{$restaurantId}", 'new-order', ['order_id' => $orderId]);
+
         return JsonResponse::ok($response, [
             'order_id' => $orderId,
             'status' => 'pending',
@@ -229,7 +232,11 @@ final class OrderController
         $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, ?, ?)')
             ->execute([$order['id'], $nextStatus, $role]);
 
-        // Ici, le PHP publierait l'événement sur le service temps réel (Soketi) — voir §4.
+        Realtime::trigger("private-order.{$order['id']}", 'status-updated', ['status' => $nextStatus]);
+        Realtime::trigger("private-restaurant.{$order['restaurant_id']}", 'order-updated', [
+            'order_id' => $order['id'],
+            'status' => $nextStatus,
+        ]);
         $this->notifyClient((int) $order['client_id'], (int) $order['id'], $nextStatus);
 
         if ($nextStatus === 'ready_for_pickup') {
@@ -317,6 +324,16 @@ final class OrderController
 
         $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "driver_assigned", "driver")')
             ->execute([$routeArgs['id']]);
+
+        $restaurantId = $db->prepare('SELECT restaurant_id FROM orders WHERE id = ?');
+        $restaurantId->execute([$routeArgs['id']]);
+        $restaurantId = $restaurantId->fetchColumn();
+
+        Realtime::trigger("private-order.{$routeArgs['id']}", 'driver-assigned', ['driver_id' => $driverId]);
+        Realtime::trigger("private-restaurant.{$restaurantId}", 'order-updated', [
+            'order_id' => (int) $routeArgs['id'],
+            'status' => 'ready_for_pickup',
+        ]);
 
         return JsonResponse::ok($response, ['order_id' => (int) $routeArgs['id'], 'driver_id' => $driverId]);
     }
