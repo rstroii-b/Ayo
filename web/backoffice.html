@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commandes — Saveurs Pro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/backoffice.css">
+</head>
+<body class="desktop">
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="logo">
+        <div class="logomark">S</div>
+        <div class="logotext">Saveurs Pro</div>
+      </div>
+      <a class="navitem active" href="/backoffice.html">Commandes <span class="badge" id="nav-count" hidden></span></a>
+      <a class="navitem" href="/backoffice-menu.html">Menu</a>
+      <div class="foot" id="restaurant-name-foot"></div>
+    </nav>
+
+    <main class="main">
+      <div class="dtopbar">
+        <h1>Commandes en direct</h1>
+        <div id="stripe-status"></div>
+      </div>
+
+      <div class="dcontent">
+        <div id="setup-block" hidden>
+          <p class="sectitle">Créez votre restaurant pour commencer</p>
+          <form class="form" id="setup-form" style="padding:0;max-width:420px;">
+            <div class="field"><label for="name">Nom du restaurant</label><input id="name" name="name" required></div>
+            <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" placeholder="Sénégal, Cameroun…"></div>
+            <div class="field"><label for="siret">SIRET</label><input id="siret" name="siret" required maxlength="14"></div>
+            <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" required></div>
+            <div class="field"><label for="lat">Latitude</label><input id="lat" name="lat" type="number" step="any" required value="48.8566"></div>
+            <div class="field"><label for="lng">Longitude</label><input id="lng" name="lng" type="number" step="any" required value="2.3522"></div>
+            <button type="submit" class="btn btn-primary">Créer mon restaurant</button>
+            <p class="error-msg" id="setup-error" hidden></p>
+          </form>
+        </div>
+
+        <div class="board" id="board" hidden></div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="./js/pages/backoffice.js"></script>
+</body>
+</html>

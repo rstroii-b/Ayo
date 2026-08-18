@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restaurant — Saveurs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+<style>body{position:relative;max-width:480px;}</style>
+</head>
+<body>
+  <div class="banner">
+    <div class="topbar">
+      <a class="back-btn" href="/index.html" aria-label="Retour" style="background:rgba(255,255,255,.92);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div class="content" id="restaurant-header" style="padding-top:14px;">
+    <p class="state-msg">Chargement…</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" type="button">Menu</button>
+  </div>
+
+  <div class="menu-list" id="menu-list"></div>
+
+  <div class="sticky-bar" id="cart-bar" hidden>
+    <a class="btn btn-primary btn-block" id="cart-link" href="/panier.html">
+      <span id="cart-summary"></span>
+    </a>
+  </div>
+
+  <script type="module" src="./js/pages/restaurant.js"></script>
+</body>
+</html>

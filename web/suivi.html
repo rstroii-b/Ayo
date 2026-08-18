@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivi de commande — Saveurs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <div class="topbar" style="border-bottom:1px solid var(--line);">
+    <a class="back-btn" href="/index.html" aria-label="Retour">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div class="htitle">Suivi de commande</div>
+  </div>
+
+  <div class="content" id="status-header">
+    <p class="state-msg">Chargement…</p>
+  </div>
+
+  <div class="steps" id="steps"></div>
+
+  <div class="cart-block" id="driver-block" hidden></div>
+
+  <div class="cart-block" id="items-block"></div>
+
+  <script type="module" src="./js/pages/suivi.js"></script>
+</body>
+</html>

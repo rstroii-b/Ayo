@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saveurs — livraison de cuisine africaine</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <header class="header">
+    <div class="idrow">
+      <a class="avatar" id="avatar" href="/login.html" style="text-decoration:none;">?</a>
+      <div class="idcol">
+        <span class="hello" id="hello">Bonjour</span>
+        <span class="locrow" id="location">Choisir une adresse</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+    <h1 class="title">Qu'est-ce qui te fait envie&nbsp;?</h1>
+
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Plat, restaurant, région d'Afrique…" autocomplete="off">
+    </div>
+
+    <div class="chiprow" id="region-chips">
+      <button class="chip active" data-region="">Tout</button>
+      <button class="chip" data-region="Sénégal">Sénégal</button>
+      <button class="chip" data-region="Côte d'Ivoire">Côte d'Ivoire</button>
+      <button class="chip" data-region="Cameroun">Cameroun</button>
+      <button class="chip" data-region="Nigeria">Nigeria</button>
+      <button class="chip" data-region="Éthiopie">Éthiopie</button>
+    </div>
+
+    <section>
+      <h2 class="sechead">Restaurants près de toi</h2>
+      <div id="restaurant-list" class="rlist" aria-live="polite">
+        <p class="state-msg">Chargement des restaurants…</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

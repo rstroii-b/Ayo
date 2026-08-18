@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Créer un compte — Saveurs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <div class="topbar">
+    <a class="back-btn" href="/index.html" aria-label="Retour">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+  </div>
+
+  <div class="content" style="padding-top:0;">
+    <h1 class="title">Créer un compte</h1>
+
+    <div class="role-tabs" id="role-tabs" style="padding:0 0 16px;margin:0 20px;">
+      <button type="button" class="chip active" data-role="client">Client</button>
+      <button type="button" class="chip" data-role="restaurant_owner">Restaurateur</button>
+      <button type="button" class="chip" data-role="driver">Livreur</button>
+    </div>
+
+    <form class="form" id="register-form">
+      <div class="field">
+        <label for="first_name">Prénom</label>
+        <input id="first_name" name="first_name" required autocomplete="given-name">
+      </div>
+      <div class="field">
+        <label for="last_name">Nom</label>
+        <input id="last_name" name="last_name" required autocomplete="family-name">
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="password">Mot de passe</label>
+        <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password">
+      </div>
+      <div class="field" id="siret-field" hidden>
+        <label for="siret">SIRET (statut auto-entrepreneur)</label>
+        <input id="siret" name="siret" inputmode="numeric" pattern="[0-9]{14}" maxlength="14">
+      </div>
+      <div class="field" id="vehicule-field" hidden>
+        <label for="vehicule_type">Véhicule</label>
+        <select id="vehicule_type" name="vehicule_type">
+          <option value="velo">Vélo</option>
+          <option value="scooter">Scooter</option>
+          <option value="voiture">Voiture</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">Créer mon compte</button>
+      <p class="error-msg" id="form-error" hidden></p>
+    </form>
+
+    <p style="padding:0 20px;font-size:13.5px;color:var(--ink-dim);">
+      Déjà un compte ? <a class="link" href="/login.html">Se connecter</a>
+    </p>
+  </div>
+
+  <script type="module" src="./js/pages/register.js"></script>
+</body>
+</html>

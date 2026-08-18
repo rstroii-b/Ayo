@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menu — Saveurs Pro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/backoffice.css">
+</head>
+<body class="desktop">
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="logo">
+        <div class="logomark">S</div>
+        <div class="logotext">Saveurs Pro</div>
+      </div>
+      <a class="navitem" href="/backoffice.html">Commandes</a>
+      <a class="navitem active" href="/backoffice-menu.html">Menu</a>
+      <div class="foot" id="restaurant-name-foot"></div>
+    </nav>
+
+    <main class="main">
+      <div class="dtopbar"><h1>Gestion du menu</h1></div>
+
+      <div class="dcontent" id="menu-content">
+        <p class="state-msg">Chargement…</p>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="./js/pages/backoffice-menu.js"></script>
+</body>
+</html>

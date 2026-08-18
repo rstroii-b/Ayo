@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panier — Saveurs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <div class="topbar" style="border-bottom:1px solid var(--line);">
+    <a class="back-btn" href="/index.html" aria-label="Retour">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div>
+      <div class="htitle">Ta commande</div>
+      <div class="hsub" id="restaurant-name"></div>
+    </div>
+  </div>
+
+  <div id="empty-state" class="content" hidden>
+    <p class="state-msg">Ton panier est vide.</p>
+    <a class="btn btn-ghost" href="/index.html">Découvrir des restaurants</a>
+  </div>
+
+  <div id="cart-view" hidden>
+    <div class="cart-block" id="cart-lines"></div>
+
+    <div class="cart-block">
+      <div class="field" style="padding:10px 0;">
+        <label for="address">Adresse de livraison</label>
+        <input id="address" placeholder="12 rue de Paris, 75011 Paris" required>
+      </div>
+    </div>
+
+    <div class="cart-block">
+      <div class="sumrow"><span>Sous-total</span><span id="sum-subtotal"></span></div>
+      <p class="state-msg" style="padding:0 4px;">Frais de livraison et TVA calculés à l'étape suivante.</p>
+    </div>
+
+    <div id="payment-step" hidden>
+      <div id="payment-element"></div>
+    </div>
+
+    <div class="sticky-bar">
+      <button class="btn btn-primary btn-block" id="checkout-btn" type="button">Commander</button>
+      <p class="error-msg" id="checkout-error" hidden></p>
+    </div>
+  </div>
+
+  <script src="https://js.stripe.com/v3/"></script>
+  <script type="module" src="./js/pages/panier.js"></script>
+</body>
+</html>
