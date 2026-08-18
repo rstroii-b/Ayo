@@ -72,6 +72,10 @@ $app->group('/api/v1', function ($group) use ($auth) {
     // Back-office restaurateur
     $group->get('/restaurant/orders/live', [OrderController::class, 'liveForRestaurant'])
         ->add($auth('restaurant_owner'));
+    $group->get('/restaurant/orders/history', [OrderController::class, 'historyForRestaurant'])
+        ->add($auth('restaurant_owner'));
+    $group->get('/restaurant/stats', [OrderController::class, 'statsForRestaurant'])
+        ->add($auth('restaurant_owner'));
 
     // App livreur
     $group->get('/driver/orders/available', [OrderController::class, 'availableForDriver'])->add($auth('driver'));

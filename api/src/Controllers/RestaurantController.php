@@ -75,7 +75,7 @@ final class RestaurantController
     public function mine(Request $request, Response $response): Response
     {
         $stmt = Database::connection()->prepare(
-            'SELECT id, name, slug, adresse, cuisine_origine, stripe_account_id, commission_pct
+            'SELECT id, name, slug, adresse, lat, lng, cuisine_origine, stripe_account_id, commission_pct
              FROM restaurants WHERE owner_id = ? ORDER BY id LIMIT 1'
         );
         $stmt->execute([$request->getAttribute('user_id')]);

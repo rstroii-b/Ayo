@@ -359,6 +359,84 @@ final class OrderController
         return JsonResponse::ok($response, ['orders' => $this->withItemSummaries($db, $orders)]);
     }
 
+    /** GET /restaurant/orders/history — commandes terminées ou annulées (le kanban ne montre que les commandes actives). */
+    public function historyForRestaurant(Request $request, Response $response): Response
+    {
+        $ownerId = (int) $request->getAttribute('user_id');
+        $db = Database::connection();
+
+        $stmt = $db->prepare(
+            "SELECT o.id, o.status, o.subtotal_cents, o.total_cents, o.created_at, o.delivered_at,
+                    u.first_name AS client_first_name
+             FROM orders o
+             JOIN restaurants r ON r.id = o.restaurant_id
+             JOIN users u ON u.id = o.client_id
+             WHERE r.owner_id = ? AND o.status IN ('delivered','cancelled')
+             ORDER BY o.created_at DESC
+             LIMIT 50"
+        );
+        $stmt->execute([$ownerId]);
+        $orders = $stmt->fetchAll();
+
+        return JsonResponse::ok($response, ['orders' => $this->withItemSummaries($db, $orders)]);
+    }
+
+    /** GET /restaurant/stats — tableau de bord : chiffre d'affaires, volume, plats les plus vendus. */
+    public function statsForRestaurant(Request $request, Response $response): Response
+    {
+        $ownerId = (int) $request->getAttribute('user_id');
+        $db = Database::connection();
+
+        $restaurantStmt = $db->prepare('SELECT id FROM restaurants WHERE owner_id = ? ORDER BY id LIMIT 1');
+        $restaurantStmt->execute([$ownerId]);
+        $restaurantId = $restaurantStmt->fetchColumn();
+
+        if ($restaurantId === false) {
+            return JsonResponse::error($response, 404, "Vous n'avez pas encore de restaurant");
+        }
+
+        $today = $db->prepare(
+            "SELECT COUNT(*) AS orders_count, COALESCE(SUM(subtotal_cents), 0) AS revenue_cents
+             FROM orders WHERE restaurant_id = ? AND status = 'delivered' AND DATE(delivered_at) = CURDATE()"
+        );
+        $today->execute([$restaurantId]);
+        $today = $today->fetch();
+
+        $week = $db->prepare(
+            "SELECT COUNT(*) AS orders_count, COALESCE(SUM(subtotal_cents), 0) AS revenue_cents
+             FROM orders WHERE restaurant_id = ? AND status = 'delivered' AND delivered_at >= (NOW() - INTERVAL 7 DAY)"
+        );
+        $week->execute([$restaurantId]);
+        $week = $week->fetch();
+
+        $pending = $db->prepare(
+            "SELECT COUNT(*) FROM orders WHERE restaurant_id = ? AND status IN ('pending','accepted','preparing','ready_for_pickup')"
+        );
+        $pending->execute([$restaurantId]);
+        $pendingCount = (int) $pending->fetchColumn();
+
+        $topItems = $db->prepare(
+            "SELECT mi.name, SUM(oi.quantity) AS total_quantity
+             FROM order_items oi
+             JOIN orders o ON o.id = oi.order_id
+             JOIN menu_items mi ON mi.id = oi.menu_item_id
+             WHERE o.restaurant_id = ? AND o.status = 'delivered' AND o.delivered_at >= (NOW() - INTERVAL 30 DAY)
+             GROUP BY mi.id, mi.name
+             ORDER BY total_quantity DESC
+             LIMIT 5"
+        );
+        $topItems->execute([$restaurantId]);
+
+        return JsonResponse::ok($response, [
+            'orders_today' => (int) $today['orders_count'],
+            'revenue_today_cents' => (int) $today['revenue_cents'],
+            'orders_week' => (int) $week['orders_count'],
+            'revenue_week_cents' => (int) $week['revenue_cents'],
+            'pending_orders' => $pendingCount,
+            'top_items' => $topItems->fetchAll(),
+        ]);
+    }
+
     /** GET /driver/orders/available — commandes prêtes, pas encore prises par un livreur. */
     public function availableForDriver(Request $request, Response $response): Response
     {

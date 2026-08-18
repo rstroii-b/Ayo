@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Menu — Ayo Pro</title>
+<title>Statistiques — Ayo Pro</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="./css/app.css">
 <link rel="stylesheet" href="./css/backoffice.css">
@@ -18,10 +18,10 @@
       <div class="logo">
         <img src="/assets/logo.png" alt="Ayo" style="width:140px;height:auto;">
       </div>
-      <a class="navitem" href="/backoffice.html">Commandes</a>
+      <a class="navitem" href="/backoffice.html">Commandes <span class="badge" id="nav-count" hidden></span></a>
       <a class="navitem" href="/backoffice-history.html">Historique</a>
-      <a class="navitem active" href="/backoffice-menu.html">Menu</a>
-      <a class="navitem" href="/backoffice-stats.html">Statistiques</a>
+      <a class="navitem" href="/backoffice-menu.html">Menu</a>
+      <a class="navitem active" href="/backoffice-stats.html">Statistiques</a>
       <a class="navitem" href="/backoffice-settings.html">Paramètres</a>
       <div class="foot" id="restaurant-name-foot"></div>
       <button class="navitem" id="logout-btn" type="button" style="border:none;background:none;cursor:pointer;width:100%;font-family:inherit;">
@@ -31,14 +31,14 @@
     </nav>
 
     <main class="main">
-      <div class="dtopbar"><h1>Gestion du menu</h1></div>
+      <div class="dtopbar"><h1>Statistiques</h1></div>
 
-      <div class="dcontent" id="menu-content">
+      <div class="dcontent" id="stats-content">
         <p class="state-msg">Chargement…</p>
       </div>
     </main>
   </div>
 
-  <script type="module" src="./js/pages/backoffice-menu.js"></script>
+  <script type="module" src="./js/pages/backoffice-stats.js"></script>
 </body>
 </html>
