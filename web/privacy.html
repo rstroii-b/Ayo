@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confidentialité — Ayo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+<style>
+  .sec{margin-bottom:22px;}
+  .sec h2{font-family:'Bricolage Grotesque',sans-serif;font-size:14.5px;font-weight:700;margin:0 0 6px;}
+  .sec p,.sec li{font-size:13.5px;color:var(--ink-dim);line-height:1.6;}
+  .sec ul{margin:0;padding-left:18px;}
+</style>
+</head>
+<body>
+  <div class="topbar" style="border-bottom:1px solid var(--line);">
+    <a class="back-btn" href="/account.html" aria-label="Retour">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div class="htitle">Confidentialité</div>
+  </div>
+
+  <main class="content with-nav" style="padding-bottom:40px;">
+    <p class="state-msg" style="margin-bottom:20px;">Dernière mise à jour : août 2026.</p>
+
+    <div class="sec">
+      <h2>Ce que nous collectons</h2>
+      <ul>
+        <li>Compte : nom, email, téléphone</li>
+        <li>Commandes : adresse de livraison, contenu du panier, historique</li>
+        <li>Livreurs : position GPS pendant une livraison active uniquement</li>
+        <li>Paiement : géré entièrement par Stripe — Ayo ne stocke aucune donnée bancaire</li>
+      </ul>
+    </div>
+
+    <div class="sec">
+      <h2>Pourquoi</h2>
+      <p>Ces données servent uniquement à faire fonctionner le service : traiter ta commande, la livrer, et te permettre de la suivre. Aucune donnée n'est vendue à des tiers.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Durée de conservation</h2>
+      <p>Les données de compte sont conservées tant que le compte est actif. La position GPS d'un livreur n'est conservée que le temps de la livraison en cours.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Tes droits</h2>
+      <p>Conformément au RGPD, tu peux à tout moment demander l'accès, la rectification ou la suppression de tes données en écrivant à <a class="link" href="mailto:contact@jobivoire.com">contact@jobivoire.com</a>.</p>
+    </div>
+  </main>
+
+  <nav class="bottomnav">
+    <a href="/index.html">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      Accueil
+    </a>
+    <a href="/orders.html">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-1.5 9h-13z"/><path d="M6.5 13L5 4"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
+      Commandes
+    </a>
+    <a href="/account.html" class="active">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+      Compte
+    </a>
+  </nav>
+</body>
+</html>
