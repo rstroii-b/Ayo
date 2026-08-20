@@ -25,12 +25,23 @@ async function init() {
   }
 }
 
-function statCardHtml(label, value, sub) {
+function sparklineHtml(dailyRevenue) {
+  const max = Math.max(1, ...dailyRevenue.map((d) => d.revenue_cents));
+
+  return `
+    <div class="spark">
+      ${dailyRevenue.map((d, i) => `<i class="${i === dailyRevenue.length - 1 ? 'now' : ''}" style="height:${Math.max(6, (d.revenue_cents / max) * 100)}%;"></i>`).join('')}
+    </div>
+  `;
+}
+
+function statCardHtml({ label, value, sub, glow, extra }) {
   return `
     <div class="statcard">
       <p class="statlabel">${label}</p>
-      <p class="statvalue">${value}</p>
+      <p class="statvalue${glow ? ' glow' : ''}">${value}</p>
       ${sub ? `<p class="statsub">${sub}</p>` : ''}
+      ${extra ?? ''}
     </div>
   `;
 }
@@ -44,8 +55,9 @@ function topItemsHtml(items) {
 
   return `
     <div class="topitems">
-      ${items.map((item) => `
+      ${items.map((item, i) => `
         <div class="topitem">
+          <span class="rank">${String(i + 1).padStart(2, '0')}</span>
           <span class="tiname">${escapeHtml(item.name)}</span>
           <div class="tibar"><div class="tibarfill" style="width:${(item.total_quantity / max) * 100}%;"></div></div>
           <span class="ticount">${item.total_quantity}</span>
@@ -61,9 +73,23 @@ async function loadStats() {
 
   content.innerHTML = `
     <div class="statgrid">
-      ${statCardHtml('Ventes aujourd\'hui', formatEuros(stats.revenue_today_cents), `${stats.orders_today} commande${stats.orders_today > 1 ? 's' : ''} livrée${stats.orders_today > 1 ? 's' : ''}`)}
-      ${statCardHtml('Ventes sur 7 jours', formatEuros(stats.revenue_week_cents), `${stats.orders_week} commande${stats.orders_week > 1 ? 's' : ''} livrée${stats.orders_week > 1 ? 's' : ''}`)}
-      ${statCardHtml('Commandes en cours', stats.pending_orders, 'sur le kanban en direct')}
+      ${statCardHtml({
+        label: 'Ventes aujourd\'hui',
+        value: formatEuros(stats.revenue_today_cents),
+        sub: `${stats.orders_today} commande${stats.orders_today > 1 ? 's' : ''} livrée${stats.orders_today > 1 ? 's' : ''}`,
+        glow: true,
+        extra: sparklineHtml(stats.daily_revenue),
+      })}
+      ${statCardHtml({
+        label: 'Ventes sur 7 jours',
+        value: formatEuros(stats.revenue_week_cents),
+        sub: `${stats.orders_week} commande${stats.orders_week > 1 ? 's' : ''} livrée${stats.orders_week > 1 ? 's' : ''}`,
+      })}
+      ${statCardHtml({
+        label: 'Commandes en cours',
+        value: stats.pending_orders,
+        extra: `<div class="pendingrow"><span class="pulse-dot"></span><span>sur le kanban en direct</span></div>`,
+      })}
     </div>
 
     <p class="sectitle" style="margin-top:26px;">Plats les plus vendus (30 derniers jours)</p>

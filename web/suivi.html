@@ -7,27 +7,26 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="./css/app.css">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#14181B">
+<meta name="theme-color" content="#0A0A0C">
 <link rel="icon" href="/assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
 <script type="module" src="/js/register-sw.js"></script></head>
 <body>
-  <div class="topbar" style="border-bottom:1px solid var(--line);">
+  <div class="topbar">
     <a class="back-btn" href="/index.html" aria-label="Retour">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
     </a>
-    <div class="htitle">Suivi de commande</div>
   </div>
 
-  <div class="content" id="status-header">
-    <p class="state-msg">Chargement…</p>
+  <div id="status-header">
+    <p class="state-msg" style="padding:0 20px;">Chargement…</p>
   </div>
 
-  <div class="steps" id="steps"></div>
+  <div id="route-block" hidden></div>
 
-  <div class="cart-block" id="driver-block" hidden></div>
+  <div class="driver-card" id="driver-block" hidden></div>
 
-  <div class="cart-block" id="items-block"></div>
+  <div class="items-card" id="items-block" hidden></div>
 
   <script src="https://js.pusher.com/8.4/pusher.min.js"></script>
   <script type="module" src="./js/pages/suivi.js"></script>

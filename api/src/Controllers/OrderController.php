@@ -186,7 +186,7 @@ final class OrderController
 
         if ($order['driver_id'] !== null) {
             $driver = Database::connection()->prepare(
-                'SELECT u.first_name, dp.vehicule_type FROM users u
+                'SELECT u.first_name, u.phone, dp.vehicule_type FROM users u
                  JOIN driver_profiles dp ON dp.user_id = u.id WHERE u.id = ?'
             );
             $driver->execute([$order['driver_id']]);
@@ -427,11 +427,28 @@ final class OrderController
         );
         $topItems->execute([$restaurantId]);
 
+        // Chiffre d'affaires par jour sur les 7 derniers jours (pour le mini-graphique du dashboard) —
+        // les jours sans commande livrée sont complétés à 0 ci-dessous, MySQL ne renvoie que les jours ayant des lignes.
+        $dailyRows = $db->prepare(
+            "SELECT DATE(delivered_at) AS day, SUM(subtotal_cents) AS revenue_cents
+             FROM orders WHERE restaurant_id = ? AND status = 'delivered' AND delivered_at >= (CURDATE() - INTERVAL 6 DAY)
+             GROUP BY DATE(delivered_at)"
+        );
+        $dailyRows->execute([$restaurantId]);
+        $dailyByDate = array_column($dailyRows->fetchAll(), 'revenue_cents', 'day');
+
+        $dailyRevenue = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-{$i} days"));
+            $dailyRevenue[] = ['date' => $date, 'revenue_cents' => (int) ($dailyByDate[$date] ?? 0)];
+        }
+
         return JsonResponse::ok($response, [
             'orders_today' => (int) $today['orders_count'],
             'revenue_today_cents' => (int) $today['revenue_cents'],
             'orders_week' => (int) $week['orders_count'],
             'revenue_week_cents' => (int) $week['revenue_cents'],
+            'daily_revenue' => $dailyRevenue,
             'pending_orders' => $pendingCount,
             'top_items' => $topItems->fetchAll(),
         ]);
@@ -503,7 +520,7 @@ final class OrderController
     private function findAccessibleOrder(Request $request, int $orderId): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT o.*, r.owner_id AS restaurant_owner_id
+            'SELECT o.*, r.owner_id AS restaurant_owner_id, r.name AS restaurant_name
              FROM orders o JOIN restaurants r ON r.id = o.restaurant_id WHERE o.id = ?'
         );
         $stmt->execute([$orderId]);

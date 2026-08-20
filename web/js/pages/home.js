@@ -1,14 +1,28 @@
 import { apiFetch } from '../api.js';
-import { escapeHtml } from '../format.js';
+import { escapeHtml, formatEuros } from '../format.js';
+
+// Pas de géocodage dans ce squelette (voir panier.js) — position fixe (Paris) pour la démo,
+// sert à trier par distance et estimer frais/délai de livraison sur la liste.
+const DEMO_LAT = 48.8566;
+const DEMO_LNG = 2.3522;
 
 function restaurantCardHtml(restaurant) {
+  const hasEstimate = restaurant.delivery_fee_cents !== undefined;
+
   return `
     <a class="rcard" href="/restaurant.html?id=${restaurant.id}">
       <div class="rphoto"></div>
       <div class="rinfo">
-        <div class="rname">${escapeHtml(restaurant.name)}</div>
+        <div class="rtoprow">
+          <div class="rname">${escapeHtml(restaurant.name)}</div>
+          ${hasEstimate ? `<span class="rfee">${formatEuros(restaurant.delivery_fee_cents)}</span>` : ''}
+        </div>
         ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
-        ${restaurant.distance_km ? `<div class="rmeta">${restaurant.distance_km.toFixed(1)} km</div>` : ''}
+        <div class="rmetarow">
+          ${restaurant.distance_km ? `${restaurant.distance_km.toFixed(1)} km` : ''}
+          ${restaurant.distance_km && hasEstimate ? '<span class="dotsep"></span>' : ''}
+          ${hasEstimate ? `${restaurant.eta_low_min}–${restaurant.eta_high_min} min` : ''}
+        </div>
       </div>
     </a>
   `;
@@ -18,7 +32,7 @@ async function loadRestaurants({ region = '', q = '' } = {}) {
   const list = document.getElementById('restaurant-list');
   list.innerHTML = '<p class="state-msg">Chargement des restaurants…</p>';
 
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ lat: DEMO_LAT, lng: DEMO_LNG });
   if (region) params.set('region', region);
   if (q) params.set('q', q);
 

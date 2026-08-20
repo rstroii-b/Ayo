@@ -4,3 +4,13 @@
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
 </IfModule>
+
+<IfModule mod_headers.c>
+  # Sans ceci, les navigateurs mettent CSS/JS en cache "heuristique" (via Last-Modified) même
+  # sans le demander — un déploiement peut alors rester invisible pour un visiteur revenant sur
+  # le site tant que ce cache heuristique n'expire pas. no-cache force une revalidation à chaque
+  # requête (ETag/304), sans re-télécharger le fichier s'il n'a pas changé.
+  <FilesMatch "\.(css|js|html|json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

@@ -151,27 +151,62 @@ final class RestaurantController
         }
 
         $orderBy = 'name ASC';
+        $withDistance = !empty($params['lat']) && !empty($params['lng']);
 
-        // Tri par distance (formule de Haversine) si la position du client est fournie.
-        if (!empty($params['lat']) && !empty($params['lng'])) {
+        // Tri par distance (formule de Haversine) si la position du client est fournie —
+        // sert aussi à estimer frais et délai de livraison (voir estimateDelivery ci-dessous).
+        if ($withDistance) {
             $lat = (float) $params['lat'];
             $lng = (float) $params['lng'];
 
-            $select = "id, name, slug, cuisine_origine, lat, lng,
-                (6371 * acos(cos(radians(?)) * cos(radians(lat)) *
-                cos(radians(lng) - radians(?)) + sin(radians(?)) * sin(radians(lat)))) AS distance_km";
+            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.lat, r.lng,
+                z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
+                (6371 * acos(cos(radians(?)) * cos(radians(r.lat)) *
+                cos(radians(r.lng) - radians(?)) + sin(radians(?)) * sin(radians(r.lat)))) AS distance_km";
             $args = array_merge([$lat, $lng, $lat], $args);
             $orderBy = 'distance_km ASC';
         } else {
-            $select = 'id, name, slug, cuisine_origine, lat, lng';
+            $select = 'r.id, r.name, r.slug, r.cuisine_origine, r.lat, r.lng';
         }
 
-        $sql = "SELECT {$select} FROM restaurants WHERE " . implode(' AND ', $where) . " ORDER BY {$orderBy} LIMIT 50";
+        $sql = "SELECT {$select} FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
+                WHERE " . implode(' AND ', $where) . " ORDER BY {$orderBy} LIMIT 50";
 
         $stmt = $db->prepare($sql);
         $stmt->execute($args);
+        $restaurants = $stmt->fetchAll();
 
-        return JsonResponse::ok($response, ['restaurants' => $stmt->fetchAll()]);
+        if ($withDistance) {
+            $restaurants = array_map([$this, 'withDeliveryEstimate'], $restaurants);
+        }
+
+        return JsonResponse::ok($response, ['restaurants' => $restaurants]);
+    }
+
+    /**
+     * Estimation frais + délai de livraison pour la liste — même formule de frais que la
+     * commande réelle (voir OrderController::create). Le délai est une estimation grossière
+     * (préparation fixe + trajet à vitesse moyenne), affichée comme fourchette, jamais promise.
+     */
+    private function withDeliveryEstimate(array $restaurant): array
+    {
+        $distanceKm = (float) $restaurant['distance_km'];
+        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 150);
+        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 40);
+        $minFee = (int) ($restaurant['min_fee_cents'] ?? 190);
+        $surge = (float) ($restaurant['surge_multiplier'] ?? 1.0);
+
+        $restaurant['delivery_fee_cents'] = (int) round(max($minFee, $baseFee + $distanceKm * $perKm) * $surge);
+
+        $prepMin = 15;
+        $travelMin = ($distanceKm / 18) * 60; // vitesse moyenne estimée 18 km/h (vélo/scooter urbain)
+        $low = max(15, (int) (round(($prepMin + $travelMin - 5) / 5) * 5));
+        $restaurant['eta_low_min'] = $low;
+        $restaurant['eta_high_min'] = $low + 10;
+
+        unset($restaurant['base_fee_cents'], $restaurant['price_per_km_cents'], $restaurant['min_fee_cents'], $restaurant['surge_multiplier']);
+
+        return $restaurant;
     }
 
     /** GET /restaurants/{id} */

@@ -1,4 +1,4 @@
-const CACHE = 'ayo-static-v2';
+const CACHE = 'ayo-static-v5';
 
 const PRECACHE_URLS = [
   '/css/app.css',
@@ -17,8 +17,15 @@ const PRECACHE_URLS = [
 ];
 
 self.addEventListener('install', (event) => {
+  // cache:'no-cache' force une revalidation réseau — sans ça, un asset sans Cache-Control
+  // explicite peut être servi depuis le cache HTTP heuristique du navigateur (déjà périmé)
+  // au lieu du fichier réellement déployé.
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then((cache) => Promise.all(
+        PRECACHE_URLS.map((url) => fetch(url, { cache: 'no-cache' }).then((res) => cache.put(url, res)))
+      ))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -40,18 +47,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    // Pages HTML : toujours la version la plus fraîche en priorité, le cache sert de secours hors-ligne.
+    // Pages HTML : toujours la version la plus fraîche en priorité (cache:'no-cache' force la
+    // revalidation avec le serveur — même raison que plus bas), le cache sert de secours hors-ligne.
     event.respondWith(
-      fetch(request).catch(() => caches.match(request).then((cached) => cached ?? caches.match('/index.html')))
+      fetch(request, { cache: 'no-cache' }).catch(() => caches.match(request).then((cached) => cached ?? caches.match('/index.html')))
     );
 
     return;
   }
 
   // Assets statiques (CSS/JS/images) : cache en priorité, réseau en secours + mise à jour silencieuse.
+  // cache:'no-cache' sur la requête réseau — même raison que install() ci-dessus.
   event.respondWith(
     caches.match(request).then((cached) => {
-      const network = fetch(request).then((response) => {
+      const network = fetch(request, { cache: 'no-cache' }).then((response) => {
         if (response.ok) {
           caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
         }

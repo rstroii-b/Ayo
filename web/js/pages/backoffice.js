@@ -76,7 +76,7 @@ function renderStripeStatus(restaurant) {
 const COLUMNS = [
   { key: 'pending', title: 'Nouvelles', dot: 'var(--chili)', cls: 'urgent' },
   { key: 'preparing', title: 'En préparation', dot: 'var(--accent)', cls: 'prep' },
-  { key: 'ready_for_pickup', title: 'Prêtes', dot: 'var(--herb)', cls: 'ready' },
+  { key: 'ready_for_pickup', title: 'Prêtes', dot: 'var(--cola)', cls: 'ready' },
 ];
 
 function bucketFor(status) {
