@@ -1,10 +1,11 @@
 import { apiFetch } from '../api.js';
 import { escapeHtml, formatEuros } from '../format.js';
+import { getCurrentPosition } from '../geolocation.js';
 
-// Pas de géocodage dans ce squelette (voir panier.js) — position fixe (Paris) pour la démo,
-// sert à trier par distance et estimer frais/délai de livraison sur la liste.
-const DEMO_LAT = 48.8566;
-const DEMO_LNG = 2.3522;
+// Position par défaut si la géolocalisation est refusée/indisponible (Paris) — sert de repli,
+// plus la position réelle pour trier par distance et estimer frais/délai de livraison.
+const FALLBACK_POSITION = { lat: 48.8566, lng: 2.3522 };
+let userPosition = null;
 
 const CATEGORY_COPY = {
   food: { heading: 'Restaurants près de toi', placeholder: 'Plat, restaurant, région d\'Afrique…', empty: 'Aucun restaurant ne correspond à ta recherche.' },
@@ -60,7 +61,11 @@ async function loadRestaurants({ businessType = 'food', region = '', q = '' } = 
   const list = document.getElementById('restaurant-list');
   list.innerHTML = skeletonHtml();
 
-  const params = new URLSearchParams({ lat: DEMO_LAT, lng: DEMO_LNG, business_type: businessType });
+  if (userPosition === null) {
+    userPosition = await getCurrentPosition({ fallback: FALLBACK_POSITION });
+  }
+
+  const params = new URLSearchParams({ lat: userPosition.lat, lng: userPosition.lng, business_type: businessType });
   if (region) params.set('region', region);
   if (q) params.set('q', q);
 

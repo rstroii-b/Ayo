@@ -1,6 +1,7 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { escapeHtml } from '../format.js';
+import { getCurrentPosition } from '../geolocation.js';
 
 let restaurantId = null;
 
@@ -62,6 +63,11 @@ function renderForm(restaurant) {
       <div class="field"><label for="name">Nom du commerce</label><input id="name" name="name" value="${escapeHtml(restaurant.name)}" required></div>
       <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" value="${escapeHtml(restaurant.cuisine_origine ?? '')}" placeholder="Sénégal, Cameroun…"></div>
       <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" value="${escapeHtml(restaurant.adresse)}" required></div>
+      <button type="button" class="btn btn-ghost" id="locate-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Utiliser ma position actuelle
+      </button>
+      <p class="state-msg" id="locate-status" style="margin:-6px 0 0;"></p>
       <div class="field"><label for="lat">Latitude</label><input id="lat" name="lat" type="number" step="any" value="${restaurant.lat}" required></div>
       <div class="field"><label for="lng">Longitude</label><input id="lng" name="lng" type="number" step="any" value="${restaurant.lng}" required></div>
       <button type="submit" class="btn btn-primary">Enregistrer</button>
@@ -69,6 +75,22 @@ function renderForm(restaurant) {
       <p class="state-msg" id="settings-saved" hidden>Fiche mise à jour.</p>
     </form>
   `;
+
+  document.getElementById('locate-btn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('locate-status');
+    statusEl.textContent = 'Repérage en cours…';
+
+    const position = await getCurrentPosition();
+    if (position === null) {
+      statusEl.textContent = 'Position indisponible — vérifie que la localisation est autorisée pour ce site.';
+
+      return;
+    }
+
+    document.getElementById('lat').value = position.lat;
+    document.getElementById('lng').value = position.lng;
+    statusEl.textContent = 'Position enregistrée — n\'oublie pas d\'enregistrer.';
+  });
 
   document.getElementById('settings-form').addEventListener('submit', onSubmit);
 }

@@ -2,6 +2,7 @@ import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { formatEuros, escapeHtml } from '../format.js';
 import { realtimeClient } from '../realtime.js';
+import { getCurrentPosition } from '../geolocation.js';
 
 if (requireLogin('/backoffice.html')) {
   init();
@@ -37,6 +38,22 @@ async function init() {
 }
 
 function wireSetupForm() {
+  document.getElementById('locate-btn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('locate-status');
+    statusEl.textContent = 'Repérage en cours…';
+
+    const position = await getCurrentPosition();
+    if (position === null) {
+      statusEl.textContent = 'Position indisponible — vérifie que la localisation est autorisée pour ce site.';
+
+      return;
+    }
+
+    document.getElementById('lat').value = position.lat;
+    document.getElementById('lng').value = position.lng;
+    statusEl.textContent = 'Position enregistrée.';
+  });
+
   document.getElementById('setup-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const errorEl = document.getElementById('setup-error');

@@ -3,11 +3,12 @@ import { requireLogin } from '../auth.js';
 import { getAddress } from '../address.js';
 import { getCart, setQuantity, cartSubtotalCents, clearCart } from '../cart.js';
 import { formatEuros, escapeHtml } from '../format.js';
+import { getCurrentPosition } from '../geolocation.js';
 
-// Pas de géocodage dans ce squelette — position fixe (Paris) pour la démo,
-// seule l'adresse texte saisie par le client est réellement utilisée pour la livraison.
-const DEMO_LAT = 48.8566;
-const DEMO_LNG = 2.3522;
+// Pas de géocodage d'adresse texte→coordonnées dans ce squelette — la position réelle de
+// l'appareil sert de point de livraison (repli Paris si refusée/indisponible). Le libellé
+// d'adresse saisi par le client reste ce qui s'affiche au restaurant/livreur.
+const FALLBACK_POSITION = { lat: 48.8566, lng: 2.3522 };
 
 let phase = 'review'; // 'review' -> 'paying'
 let orderId = null;
@@ -77,6 +78,8 @@ async function startCheckout() {
   btn.textContent = 'Création de la commande…';
 
   try {
+    const position = await getCurrentPosition({ fallback: FALLBACK_POSITION });
+
     const order = await apiFetch('/orders', {
       method: 'POST',
       body: {
@@ -86,7 +89,7 @@ async function startCheckout() {
           quantity: line.quantity,
           option_ids: line.options?.map((o) => o.id) ?? [],
         })),
-        delivery_address: { lat: DEMO_LAT, lng: DEMO_LNG, label: address },
+        delivery_address: { lat: position.lat, lng: position.lng, label: address },
       },
     });
     orderId = order.order_id;
