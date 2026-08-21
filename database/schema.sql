@@ -23,7 +23,7 @@ CREATE TABLE users (
 
 CREATE TABLE driver_profiles (
   user_id           BIGINT UNSIGNED PRIMARY KEY,
-  siret             VARCHAR(14) NOT NULL,
+  siret             VARCHAR(32) NULL, -- SIRET (France) ou identifiant pro équivalent selon le pays ; facultatif hors France (voir CGU §2)
   statut_juridique  ENUM('auto_entrepreneur','entreprise_individuelle') NOT NULL DEFAULT 'auto_entrepreneur',
   stripe_account_id VARCHAR(64) NULL,
   vehicule_type     ENUM('velo','scooter','voiture') NOT NULL DEFAULT 'velo',

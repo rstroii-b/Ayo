@@ -34,10 +34,6 @@ final class AuthController
             return JsonResponse::error($response, 422, 'Rôle invalide');
         }
 
-        if ($body['role'] === 'driver' && empty($body['siret'])) {
-            return JsonResponse::error($response, 422, 'Champ manquant', 'siret (statut auto-entrepreneur requis)');
-        }
-
         $db = Database::connection();
 
         $exists = $db->prepare('SELECT id FROM users WHERE email = ?');
@@ -65,9 +61,12 @@ final class AuthController
             $userId = (int) $db->lastInsertId();
 
             if ($body['role'] === 'driver') {
+                // SIRET facultatif — obligatoire en pratique pour un auto-entrepreneur français
+                // (voir CGU §2), mais un identifiant professionnel local peut ne pas encore exister
+                // ou être demandé sous une autre forme dans les pays où Ayo est en phase de test.
                 $db->prepare(
                     'INSERT INTO driver_profiles (user_id, siret, vehicule_type) VALUES (?, ?, ?)'
-                )->execute([$userId, $body['siret'], $body['vehicule_type'] ?? 'velo']);
+                )->execute([$userId, empty($body['siret']) ? null : $body['siret'], $body['vehicule_type'] ?? 'velo']);
             }
 
             $db->commit();

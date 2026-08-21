@@ -46,14 +46,14 @@
         <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password">
       </div>
       <div class="field" id="siret-field" hidden>
-        <label for="siret">SIRET (statut auto-entrepreneur)</label>
-        <input id="siret" name="siret" inputmode="numeric" pattern="[0-9]{14}" maxlength="14">
+        <label for="siret">Identifiant professionnel (SIRET en France) — facultatif</label>
+        <input id="siret" name="siret" maxlength="32" placeholder="Laisse vide si tu n'en as pas encore">
       </div>
       <div class="field" id="vehicule-field" hidden>
         <label for="vehicule_type">Véhicule</label>
         <select id="vehicule_type" name="vehicule_type">
           <option value="velo">Vélo</option>
-          <option value="scooter">Scooter</option>
+          <option value="scooter">Scooter / Moto</option>
           <option value="voiture">Voiture</option>
         </select>
       </div>
