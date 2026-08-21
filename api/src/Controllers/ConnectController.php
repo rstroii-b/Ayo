@@ -41,6 +41,15 @@ final class ConnectController
             return JsonResponse::error($response, 404, $message);
         }
 
+        if ($target['currency'] === 'XOF') {
+            return JsonResponse::error(
+                $response,
+                409,
+                'Stripe indisponible pour cette zone',
+                'Utilisez PATCH /connect/mobile-money pour renseigner votre compte mobile money.'
+            );
+        }
+
         $db = Database::connection();
         $stripe = Stripe::client();
 
@@ -99,8 +108,21 @@ final class ConnectController
             ? $this->restaurantForOwner($userId)
             : $this->driverProfile($userId);
 
-        if ($target === null || $target['stripe_account_id'] === null) {
-            return JsonResponse::ok($response, ['onboarded' => false, 'payouts_enabled' => false]);
+        if ($target === null) {
+            return JsonResponse::ok($response, ['onboarded' => false, 'payouts_enabled' => false, 'currency' => 'EUR']);
+        }
+
+        if ($target['currency'] === 'XOF') {
+            return JsonResponse::ok($response, [
+                'currency' => 'XOF',
+                'mobile_money_configured' => $target['mobile_money_operator'] !== null && $target['mobile_money_number'] !== null,
+                'mobile_money_operator' => $target['mobile_money_operator'],
+                'mobile_money_number' => $target['mobile_money_number'],
+            ]);
+        }
+
+        if ($target['stripe_account_id'] === null) {
+            return JsonResponse::ok($response, ['onboarded' => false, 'payouts_enabled' => false, 'currency' => 'EUR']);
         }
 
         try {
@@ -113,13 +135,50 @@ final class ConnectController
             'onboarded' => true,
             'payouts_enabled' => $account->payouts_enabled,
             'charges_enabled' => $account->charges_enabled,
+            'currency' => 'EUR',
         ]);
+    }
+
+    /** PATCH /connect/mobile-money — enregistre le compte mobile money (zone XOF) du restaurateur ou livreur. */
+    public function updateMobileMoney(Request $request, Response $response): Response
+    {
+        $role = $request->getAttribute('user_role');
+        $userId = (int) $request->getAttribute('user_id');
+        $body = (array) $request->getParsedBody();
+
+        if (!in_array($role, ['restaurant_owner', 'driver'], true)) {
+            return JsonResponse::error($response, 403, 'Réservé aux restaurateurs et livreurs');
+        }
+
+        if (empty($body['operator']) || empty($body['phone_number'])) {
+            return JsonResponse::error($response, 422, 'operator et phone_number requis');
+        }
+
+        $db = Database::connection();
+
+        if ($role === 'restaurant_owner') {
+            $restaurant = $this->restaurantForOwner($userId);
+            if ($restaurant === null) {
+                return JsonResponse::error($response, 404, "Vous n'avez pas encore de restaurant");
+            }
+
+            $db->prepare('UPDATE restaurants SET mobile_money_operator = ?, mobile_money_number = ? WHERE id = ?')
+                ->execute([$body['operator'], $body['phone_number'], $restaurant['id']]);
+        } else {
+            $db->prepare('UPDATE driver_profiles SET mobile_money_operator = ?, mobile_money_number = ? WHERE user_id = ?')
+                ->execute([$body['operator'], $body['phone_number'], $userId]);
+        }
+
+        return JsonResponse::ok($response, ['updated' => true]);
     }
 
     private function restaurantForOwner(int $ownerId): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT id, stripe_account_id FROM restaurants WHERE owner_id = ? ORDER BY id LIMIT 1'
+            'SELECT r.id, r.stripe_account_id, r.mobile_money_operator, r.mobile_money_number,
+                    COALESCE(z.currency, "EUR") AS currency
+             FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
+             WHERE r.owner_id = ? ORDER BY r.id LIMIT 1'
         );
         $stmt->execute([$ownerId]);
         $row = $stmt->fetch();
@@ -130,7 +189,10 @@ final class ConnectController
     private function driverProfile(int $userId): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT user_id AS id, stripe_account_id FROM driver_profiles WHERE user_id = ?'
+            'SELECT dp.user_id AS id, dp.stripe_account_id, dp.mobile_money_operator, dp.mobile_money_number,
+                    COALESCE(z.currency, "EUR") AS currency
+             FROM driver_profiles dp LEFT JOIN delivery_zones z ON z.id = dp.zone_id
+             WHERE dp.user_id = ?'
         );
         $stmt->execute([$userId]);
         $row = $stmt->fetch();

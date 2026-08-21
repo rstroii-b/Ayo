@@ -56,14 +56,15 @@ final class MenuController
         }
 
         $stmt = Database::connection()->prepare(
-            'INSERT INTO menu_items (restaurant_id, category_id, name, description, price_cents, vat_rate, photo_url, allergenes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO menu_items (restaurant_id, category_id, name, description, ingredients, price_cents, vat_rate, photo_url, allergenes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $routeArgs['id'],
             $body['category_id'],
             $body['name'],
             $body['description'] ?? null,
+            $body['ingredients'] ?? null,
             $body['price_cents'],
             $body['vat_rate'] ?? 10.00,
             $body['photo_url'] ?? null,
@@ -81,7 +82,7 @@ final class MenuController
         }
 
         $body = (array) $request->getParsedBody();
-        $allowed = ['name', 'description', 'price_cents', 'vat_rate', 'is_available', 'photo_url', 'allergenes'];
+        $allowed = ['name', 'description', 'ingredients', 'price_cents', 'vat_rate', 'is_available', 'photo_url', 'allergenes'];
         $fields = array_intersect_key($body, array_flip($allowed));
 
         if ($fields === []) {

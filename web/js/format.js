@@ -27,7 +27,14 @@ export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ESCAPE_MAP[ch]);
 }
 
-/** N'autorise que des URL http(s) pour les images venant des restaurateurs (évite les schémas exotiques). */
+/**
+ * N'autorise que des URL https (photos venant des restaurateurs, évite les schémas exotiques)
+ * ou des chemins relatifs vers nos propres assets statiques (photos de démo fournies par Ayo).
+ */
 export function safeImageUrl(url) {
-  return typeof url === 'string' && /^https:\/\//.test(url) ? url : null;
+  if (typeof url !== 'string') return null;
+  if (/^https:\/\//.test(url)) return url;
+  if (/^\/assets\//.test(url)) return url;
+
+  return null;
 }

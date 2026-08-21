@@ -88,6 +88,12 @@ async function checkStripeStatus() {
   const status = await apiFetch('/connect/status');
   const banner = document.getElementById('stripe-banner');
 
+  if (status.currency === 'XOF') {
+    renderMobileMoneyBanner(banner, status);
+
+    return;
+  }
+
   if (!status.payouts_enabled) {
     banner.innerHTML = `
       <div class="cart-block" style="padding:14px 16px;margin:0 0 16px;">
@@ -100,6 +106,39 @@ async function checkStripeStatus() {
       window.open(onboarding_url, '_blank');
     });
   }
+}
+
+function renderMobileMoneyBanner(banner, status) {
+  banner.innerHTML = `
+    <div class="cart-block" style="padding:14px 16px;margin:0 0 16px;">
+      <p style="margin:0 0 10px;font-size:13.5px;">
+        ${status.mobile_money_configured ? 'Compte mobile money enregistré — modifie-le ici si besoin.' : 'Renseigne ton compte mobile money pour recevoir tes gains de livraison.'}
+      </p>
+      <div class="field"><label for="mm-operator">Opérateur</label>
+        <input id="mm-operator" placeholder="ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI" value="${escapeHtml(status.mobile_money_operator ?? '')}"></div>
+      <div class="field"><label for="mm-number">Numéro</label>
+        <input id="mm-number" placeholder="+2250700000000" value="${escapeHtml(status.mobile_money_number ?? '')}"></div>
+      <button class="btn btn-primary" id="mm-save-btn" type="button">Enregistrer</button>
+      <p class="state-msg" id="mm-status" style="margin:8px 0 0;"></p>
+    </div>
+  `;
+
+  document.getElementById('mm-save-btn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('mm-status');
+
+    try {
+      await apiFetch('/connect/mobile-money', {
+        method: 'PATCH',
+        body: {
+          operator: document.getElementById('mm-operator').value.trim(),
+          phone_number: document.getElementById('mm-number').value.trim(),
+        },
+      });
+      statusEl.textContent = 'Enregistré.';
+    } catch (error) {
+      statusEl.textContent = error.detail ?? error.message;
+    }
+  });
 }
 
 function activeOrderHtml(order) {

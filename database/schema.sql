@@ -26,6 +26,8 @@ CREATE TABLE driver_profiles (
   siret             VARCHAR(32) NULL, -- SIRET (France) ou identifiant pro équivalent selon le pays ; facultatif hors France (voir CGU §2)
   statut_juridique  ENUM('auto_entrepreneur','entreprise_individuelle') NOT NULL DEFAULT 'auto_entrepreneur',
   stripe_account_id VARCHAR(64) NULL,
+  mobile_money_operator VARCHAR(20) NULL, -- ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI (zone XOF)
+  mobile_money_number   VARCHAR(20) NULL, -- format E.164
   vehicule_type     ENUM('velo','scooter','voiture') NOT NULL DEFAULT 'velo',
   zone_id           BIGINT UNSIGNED NULL,
   is_online         TINYINT(1) NOT NULL DEFAULT 0,
@@ -71,7 +73,10 @@ CREATE TABLE restaurants (
   lat               DECIMAL(10,7) NOT NULL,
   lng               DECIMAL(10,7) NOT NULL,
   cuisine_origine   VARCHAR(80) NULL,        -- ex: 'Sénégal', 'Côte d'Ivoire'
+  photo_url         VARCHAR(255) NULL,       -- bannière affichée sur la fiche et la carte d'accueil
   stripe_account_id VARCHAR(64) NULL,        -- compte Stripe Connect Express du restaurant
+  mobile_money_operator VARCHAR(20) NULL,    -- ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI (zone XOF)
+  mobile_money_number   VARCHAR(20) NULL,    -- format E.164
   commission_pct    DECIMAL(4,2) NOT NULL DEFAULT 20.00,
   business_type     ENUM('food','fashion','furniture','grocery') NOT NULL DEFAULT 'food',
   delivery_mode     ENUM('instant','scheduled') NOT NULL DEFAULT 'instant', -- 'scheduled' pour les meubles (phase 2)
@@ -100,6 +105,7 @@ CREATE TABLE menu_items (
   category_id       BIGINT UNSIGNED NOT NULL,
   name              VARCHAR(150) NOT NULL,
   description       VARCHAR(500) NULL,
+  ingredients       TEXT NULL,               -- liste libre (ex: "Riz, poisson, tomate, oignon") ; affichée dans la fiche produit, pas de sens hors alimentaire
   price_cents       INT UNSIGNED NOT NULL,
   vat_rate          DECIMAL(4,2) NOT NULL DEFAULT 10.00, -- restauration 10% par défaut ; à ajuster par article pour mode/meubles/épicerie
   photo_url         VARCHAR(255) NULL,
@@ -117,7 +123,9 @@ CREATE TABLE item_options (
   id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   menu_item_id      BIGINT UNSIGNED NOT NULL,
   name              VARCHAR(100) NOT NULL,   -- ex: 'Niveau de piment: fort'
+  option_group      VARCHAR(50) NULL,        -- ex: 'Taille' — regroupe les choix mutuellement exclusifs
   price_delta_cents INT NOT NULL DEFAULT 0,
+  stock_quantity    INT NULL,                -- NULL = stock non suivi
   KEY ix_options_item (menu_item_id),
   CONSTRAINT fk_option_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -137,8 +145,10 @@ CREATE TABLE orders (
   delivery_fee_cents  INT UNSIGNED NOT NULL,
   tva_cents           INT UNSIGNED NOT NULL,
   total_cents         INT UNSIGNED NOT NULL,
-  payment_intent_id   VARCHAR(64) NULL,
+  payment_intent_id   VARCHAR(64) NULL,     -- id Stripe (EUR) ou merchant_transaction_id CinetPay (XOF)
   stripe_charge_id    VARCHAR(64) NULL,     -- pour rattacher les Transfer à la charge d'origine (source_transaction)
+  cinetpay_notify_token VARCHAR(255) NULL,  -- pour vérifier l'authenticité du webhook CinetPay
+  cinetpay_payment_url VARCHAR(500) NULL,   -- pour renvoyer le même lien de paiement si le client recharge la page
   idempotency_key     VARCHAR(80) NOT NULL,
   adresse_livraison   VARCHAR(255) NOT NULL,
   lat                 DECIMAL(10,7) NOT NULL,
@@ -202,6 +212,8 @@ CREATE TABLE payouts (
   amount_cents      INT UNSIGNED NOT NULL,
   statut            ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
   stripe_transfer_id VARCHAR(64) NULL,
+  cinetpay_transfer_id  VARCHAR(64) NULL,  -- merchant_transaction_id qu'on a généré (zone XOF)
+  cinetpay_notify_token VARCHAR(255) NULL, -- pour vérifier l'authenticité du webhook de virement
   failure_reason    VARCHAR(255) NULL,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ix_payouts_driver (driver_id),

@@ -96,6 +96,15 @@ async function startCheckout() {
 
     const intent = await apiFetch('/payments/intent', { method: 'POST', body: { order_id: orderId } });
 
+    if (cart.currency === 'XOF') {
+      // Paiement mobile money CinetPay : la commande existe déjà côté serveur, on part sur
+      // la page de paiement hébergée et le webhook confirme le paiement de son côté.
+      clearCart();
+      window.location.href = intent.payment_url;
+
+      return;
+    }
+
     stripe = Stripe(intent.publishable_key);
     elements = stripe.elements({ clientSecret: intent.client_secret });
     elements.create('payment').mount('#payment-element');

@@ -73,6 +73,9 @@ function categoryTableHtml(category) {
         ${item.is_available ? 'Actif' : 'Épuisé'}
       </div>
       <button class="btn btn-ghost" type="button" data-photo-item-id="${item.id}" style="padding:6px 10px;font-size:11.5px;">Photo</button>
+      <button class="btn btn-ghost" type="button" data-details-item-id="${item.id}"
+        data-current-description="${escapeHtml(item.description ?? '')}" data-current-ingredients="${escapeHtml(item.ingredients ?? '')}"
+        style="padding:6px 10px;font-size:11.5px;">Détails</button>
       <button class="btn btn-ghost" type="button" data-toggle-variants="${item.id}" style="padding:6px 10px;font-size:11.5px;">Variantes${optionCount ? ` (${optionCount})` : ''}</button>
     </div>
     ${variantsPanelHtml(item)}
@@ -109,6 +112,8 @@ async function loadMenu() {
         </select>
       </div>
       <div class="field"><input name="name" placeholder="Nom de l'article" required></div>
+      <div class="field"><input name="description" placeholder="Description (facultatif)"></div>
+      <div class="field"><input name="ingredients" placeholder="Ingrédients, séparés par des virgules (facultatif)"></div>
       <div class="field"><input name="price" type="number" step="0.10" min="0" placeholder="Prix en €" required></div>
       <div class="field"><input name="vat_rate" type="number" step="0.1" min="0" max="100" placeholder="TVA % (10 par défaut)"></div>
       <div class="field"><input name="photo_url" type="url" placeholder="URL de la photo (facultatif)"></div>
@@ -122,6 +127,7 @@ async function loadMenu() {
 
   content.querySelectorAll('.sw').forEach((btn) => btn.addEventListener('click', onToggleAvailability));
   content.querySelectorAll('[data-photo-item-id]').forEach((btn) => btn.addEventListener('click', onEditPhoto));
+  content.querySelectorAll('[data-details-item-id]').forEach((btn) => btn.addEventListener('click', onEditDetails));
   content.querySelectorAll('[data-toggle-variants]').forEach((btn) => btn.addEventListener('click', onToggleVariants));
   content.querySelectorAll('[data-delete-option-id]').forEach((btn) => btn.addEventListener('click', onDeleteOption));
   content.querySelectorAll('[data-add-option-item-id]').forEach((form) => form.addEventListener('submit', onAddOption));
@@ -168,6 +174,25 @@ async function onEditPhoto(event) {
   loadMenu();
 }
 
+/** Description + ingrédients partagent un seul bouton "Détails" (deux prompts successifs),
+ * même schéma minimaliste que "Photo" ci-dessus plutôt qu'un formulaire dédié. */
+async function onEditDetails(event) {
+  const btn = event.currentTarget;
+  const itemId = btn.dataset.detailsItemId;
+
+  const description = prompt('Description (laisser vide pour la retirer) :', btn.dataset.currentDescription);
+  if (description === null) return;
+
+  const ingredients = prompt('Ingrédients, séparés par des virgules (laisser vide pour la retirer) :', btn.dataset.currentIngredients);
+  if (ingredients === null) return;
+
+  await apiFetch(`/restaurants/${restaurantId}/menu/items/${itemId}`, {
+    method: 'PATCH',
+    body: { description: description || null, ingredients: ingredients || null },
+  });
+  loadMenu();
+}
+
 async function onAddCategory(event) {
   event.preventDefault();
   const name = new FormData(event.target).get('name');
@@ -189,6 +214,8 @@ async function onAddItem(event) {
       body: {
         category_id: Number(form.get('category_id')),
         name: form.get('name'),
+        description: form.get('description') || null,
+        ingredients: form.get('ingredients') || null,
         price_cents: Math.round(Number(form.get('price')) * 100),
         vat_rate: form.get('vat_rate') ? Number(form.get('vat_rate')) : 10.00,
         photo_url: form.get('photo_url') || null,

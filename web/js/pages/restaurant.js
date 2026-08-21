@@ -4,6 +4,8 @@ import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
 
 const restaurantId = new URLSearchParams(window.location.search).get('id');
 let currency = 'EUR'; // écrasé après le chargement de la fiche commerce (voir load())
+let restaurantName = '';
+const itemsById = new Map(); // reconstruit à chaque load() — sert à ouvrir la fiche produit (photo, description, ingrédients)
 
 function renderCartBar() {
   const cart = getCart();
@@ -87,9 +89,9 @@ function menuItemHtml(item) {
 
   return `
     <div class="menu-item" data-item-id="${item.id}">
-      <div class="ithumb"${photoStyle}></div>
+      <div class="ithumb" data-open-id="${item.id}"${photoStyle}></div>
       <div class="iinfo">
-        <div class="iname">${escapeHtml(item.name)}</div>
+        <div class="iname" data-open-id="${item.id}">${escapeHtml(item.name)}</div>
         ${item.description ? `<div class="idesc">${escapeHtml(item.description)}</div>` : ''}
         <div class="ibottom">
           <span class="price">${formatMoney(item.price_cents, currency)}</span>
@@ -103,6 +105,76 @@ function menuItemHtml(item) {
     ${hasOptions ? variantPanelHtml(item) : ''}
   `;
 }
+
+function ingredientsHtml(ingredients) {
+  if (!ingredients) return '';
+
+  const items = ingredients.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  if (items.length === 0) return '';
+
+  return `
+    <div class="item-modal-section">
+      <h3>Ingrédients</h3>
+      <div class="item-modal-ingredients">${items.map((i) => `<span>${escapeHtml(i)}</span>`).join('')}</div>
+    </div>
+  `;
+}
+
+/** Ouvre la fiche produit (photo en grand, description, ingrédients) — même mécanique pour
+ * tous les types de commerce (repas, mode, meubles, épicerie), seuls description/ingrédients
+ * varient selon ce que le commerçant a renseigné. */
+function openItemModal(item) {
+  const overlay = document.getElementById('item-modal-overlay');
+  const photoUrl = safeImageUrl(item.photo_url);
+
+  document.getElementById('item-modal-photo').style.backgroundImage = photoUrl ? `url('${photoUrl}')` : 'none';
+
+  const hasOptions = item.options && item.options.length > 0;
+
+  document.getElementById('item-modal-body').innerHTML = `
+    <div class="iname">${escapeHtml(item.name)}</div>
+    <span class="price">${formatMoney(item.price_cents, currency)}</span>
+    ${item.description ? `<div class="item-modal-section"><h3>Description</h3><p>${escapeHtml(item.description)}</p></div>` : ''}
+    ${ingredientsHtml(item.ingredients)}
+    <button type="button" class="btn btn-primary btn-block" id="item-modal-add" data-item-id="${item.id}" data-has-options="${hasOptions ? 1 : 0}">
+      Ajouter au panier
+    </button>
+  `;
+
+  overlay.hidden = false;
+}
+
+function closeItemModal() {
+  document.getElementById('item-modal-overlay').hidden = true;
+}
+
+document.getElementById('item-modal-close').addEventListener('click', closeItemModal);
+document.getElementById('item-modal-overlay').addEventListener('click', (event) => {
+  if (event.target.id === 'item-modal-overlay') closeItemModal();
+});
+document.getElementById('item-modal-body').addEventListener('click', (event) => {
+  const btn = event.target.closest('#item-modal-add');
+  if (!btn) return;
+
+  closeItemModal();
+
+  const itemId = btn.dataset.itemId;
+  if (btn.dataset.hasOptions === '1') {
+    const panel = document.getElementById(`variant-${itemId}`);
+    panel.hidden = false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    return;
+  }
+
+  const item = itemsById.get(Number(itemId));
+  addItem(Number(restaurantId), restaurantName, {
+    menuItemId: item.id,
+    name: item.name,
+    priceCents: item.price_cents,
+  }, currency);
+  renderCartBar();
+});
 
 function updateVariantConfirmButton(panel) {
   const groups = new Set([...panel.querySelectorAll('.vchip[data-group]')].map((c) => c.dataset.group));
@@ -141,12 +213,24 @@ async function load() {
     ]);
 
     currency = restaurant.currency ?? 'EUR';
+    restaurantName = restaurant.name;
     document.title = `${restaurant.name} — Saveurs`;
+
+    const bannerPhoto = safeImageUrl(restaurant.photo_url);
+    if (bannerPhoto) {
+      document.querySelector('.banner').style.backgroundImage = `url('${bannerPhoto}')`;
+    }
+
     document.getElementById('restaurant-header').innerHTML = `
       <h1 class="title" style="margin-bottom:4px;">${escapeHtml(restaurant.name)}</h1>
       ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
       <p class="state-msg" style="margin-top:8px;">${escapeHtml(restaurant.adresse)}</p>
     `;
+
+    itemsById.clear();
+    for (const category of menu.categories) {
+      for (const item of category.items) itemsById.set(item.id, item);
+    }
 
     const menuList = document.getElementById('menu-list');
     menuList.innerHTML = menu.categories.length
@@ -157,6 +241,13 @@ async function load() {
       : '<p class="state-msg">Ce restaurant n\'a pas encore publié son menu.</p>';
 
     menuList.addEventListener('click', (event) => {
+      const openTarget = event.target.closest('[data-open-id]');
+      if (openTarget) {
+        openItemModal(itemsById.get(Number(openTarget.dataset.openId)));
+
+        return;
+      }
+
       const chip = event.target.closest('.vchip');
       if (chip) {
         if (chip.classList.contains('vchip-toggle')) {

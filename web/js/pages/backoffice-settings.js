@@ -19,7 +19,7 @@ async function init() {
     const restaurant = await apiFetch('/restaurant/mine');
     restaurantId = restaurant.id;
     document.getElementById('restaurant-name-foot').textContent = restaurant.name;
-    renderStripeStatus(restaurant);
+    renderPayoutStatus();
     renderForm(restaurant);
   } catch (error) {
     if (error.status === 404) {
@@ -30,10 +30,17 @@ async function init() {
   }
 }
 
-function renderStripeStatus(restaurant) {
+async function renderPayoutStatus() {
   const el = document.getElementById('stripe-status');
+  const status = await apiFetch('/connect/status');
 
-  if (restaurant.stripe_connected) {
+  if (status.currency === 'XOF') {
+    renderMobileMoneyForm(el, status);
+
+    return;
+  }
+
+  if (status.payouts_enabled) {
     el.innerHTML = '<span class="pill ok">Paiements activés</span>';
 
     return;
@@ -43,6 +50,39 @@ function renderStripeStatus(restaurant) {
   document.getElementById('onboard-btn').addEventListener('click', async () => {
     const { onboarding_url } = await apiFetch('/connect/onboard', { method: 'POST', body: {} });
     window.open(onboarding_url, '_blank');
+  });
+}
+
+function renderMobileMoneyForm(el, status) {
+  el.innerHTML = `
+    <div class="cart-block" style="padding:14px 16px;margin:0 0 18px;max-width:420px;">
+      <p style="margin:0 0 10px;font-size:13.5px;">
+        ${status.mobile_money_configured ? 'Compte mobile money enregistré — modifie-le ici si besoin.' : 'Renseigne le compte mobile money du commerce pour recevoir tes reversements.'}
+      </p>
+      <div class="field"><label for="mm-operator">Opérateur</label>
+        <input id="mm-operator" placeholder="ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI" value="${escapeHtml(status.mobile_money_operator ?? '')}"></div>
+      <div class="field"><label for="mm-number">Numéro</label>
+        <input id="mm-number" placeholder="+2250700000000" value="${escapeHtml(status.mobile_money_number ?? '')}"></div>
+      <button class="btn btn-primary" id="mm-save-btn" type="button">Enregistrer</button>
+      <p class="state-msg" id="mm-status" style="margin:8px 0 0;"></p>
+    </div>
+  `;
+
+  document.getElementById('mm-save-btn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('mm-status');
+
+    try {
+      await apiFetch('/connect/mobile-money', {
+        method: 'PATCH',
+        body: {
+          operator: document.getElementById('mm-operator').value.trim(),
+          phone_number: document.getElementById('mm-number').value.trim(),
+        },
+      });
+      statusEl.textContent = 'Enregistré.';
+    } catch (error) {
+      statusEl.textContent = error.detail ?? error.message;
+    }
   });
 }
 
@@ -62,6 +102,7 @@ function renderForm(restaurant) {
     <form class="form" id="settings-form" style="padding:0;max-width:420px;">
       <div class="field"><label for="name">Nom du commerce</label><input id="name" name="name" value="${escapeHtml(restaurant.name)}" required></div>
       <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" value="${escapeHtml(restaurant.cuisine_origine ?? '')}" placeholder="Sénégal, Cameroun…"></div>
+      <div class="field"><label for="photo_url">Photo de couverture (URL)</label><input id="photo_url" name="photo_url" type="url" value="${escapeHtml(restaurant.photo_url ?? '')}" placeholder="https://…"></div>
       <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" value="${escapeHtml(restaurant.adresse)}" required></div>
       <button type="button" class="btn btn-ghost" id="locate-btn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
@@ -110,6 +151,7 @@ async function onSubmit(event) {
       body: {
         name: form.get('name'),
         cuisine_origine: form.get('cuisine_origine') || null,
+        photo_url: form.get('photo_url') || null,
         adresse: form.get('adresse'),
         lat: Number(form.get('lat')),
         lng: Number(form.get('lng')),

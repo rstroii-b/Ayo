@@ -1,5 +1,5 @@
 import { apiFetch } from '../api.js';
-import { escapeHtml, formatMoney } from '../format.js';
+import { escapeHtml, formatMoney, safeImageUrl } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
 
 // Position par défaut si la géolocalisation est refusée/indisponible (Paris) — sert de repli,
@@ -16,10 +16,12 @@ const CATEGORY_COPY = {
 
 function restaurantCardHtml(restaurant, isFeatured) {
   const hasEstimate = restaurant.delivery_fee_cents !== undefined;
+  const photoUrl = safeImageUrl(restaurant.photo_url);
+  const photoStyle = photoUrl ? ` style="background-image:url('${escapeHtml(photoUrl)}')"` : '';
 
   return `
     <a class="rcard ${isFeatured ? 'bento-feature' : 'bento-card'}" href="/restaurant.html?id=${restaurant.id}">
-      <div class="rphoto"></div>
+      <div class="rphoto"${photoStyle}></div>
       <div class="rinfo">
         <div class="rtoprow">
           <div class="rname">${escapeHtml(restaurant.name)}</div>

@@ -98,10 +98,12 @@ $app->group('/api/v1', function ($group) use ($auth) {
     // Paiement — Stripe Connect (voir §5)
     $group->post('/payments/intent', [PaymentController::class, 'createIntent'])->add($auth('client'));
     $group->post('/webhooks/stripe', [PaymentController::class, 'webhook']);
+    $group->post('/webhooks/cinetpay', [PaymentController::class, 'cinetpayWebhook']);
 
     // Onboarding Stripe Connect — restaurateur ou livreur
     $group->post('/connect/onboard', [ConnectController::class, 'onboard'])->add($auth());
     $group->get('/connect/status', [ConnectController::class, 'status'])->add($auth());
+    $group->patch('/connect/mobile-money', [ConnectController::class, 'updateMobileMoney'])->add($auth());
 
     // Notifications push
     $group->get('/push/vapid-key', [PushController::class, 'vapidKey']);
