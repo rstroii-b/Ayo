@@ -6,11 +6,11 @@ import { escapeHtml, formatEuros } from '../format.js';
 const DEMO_LAT = 48.8566;
 const DEMO_LNG = 2.3522;
 
-function restaurantCardHtml(restaurant) {
+function restaurantCardHtml(restaurant, isFeatured) {
   const hasEstimate = restaurant.delivery_fee_cents !== undefined;
 
   return `
-    <a class="rcard" href="/restaurant.html?id=${restaurant.id}">
+    <a class="rcard ${isFeatured ? 'bento-feature' : 'bento-card'}" href="/restaurant.html?id=${restaurant.id}">
       <div class="rphoto"></div>
       <div class="rinfo">
         <div class="rtoprow">
@@ -28,9 +28,30 @@ function restaurantCardHtml(restaurant) {
   `;
 }
 
+function skeletonHtml() {
+  const line = (w) => `<div class="skel skel-line ${w}"></div>`;
+
+  return `
+    <div class="bento-grid">
+      <div class="skeleton-rcard bento-feature" style="flex-direction:column;">
+        <div class="skel skel-photo" style="width:100%;height:150px;"></div>
+        <div class="skel-lines">${line('w60')}${line('w30')}${line('w40')}</div>
+      </div>
+      <div class="skeleton-rcard bento-card" style="flex-direction:column;">
+        <div class="skel skel-photo" style="width:100%;height:92px;"></div>
+        <div class="skel-lines">${line('w60')}${line('w40')}</div>
+      </div>
+      <div class="skeleton-rcard bento-card" style="flex-direction:column;">
+        <div class="skel skel-photo" style="width:100%;height:92px;"></div>
+        <div class="skel-lines">${line('w60')}${line('w40')}</div>
+      </div>
+    </div>
+  `;
+}
+
 async function loadRestaurants({ region = '', q = '' } = {}) {
   const list = document.getElementById('restaurant-list');
-  list.innerHTML = '<p class="state-msg">Chargement des restaurants…</p>';
+  list.innerHTML = skeletonHtml();
 
   const params = new URLSearchParams({ lat: DEMO_LAT, lng: DEMO_LNG });
   if (region) params.set('region', region);
@@ -40,7 +61,7 @@ async function loadRestaurants({ region = '', q = '' } = {}) {
     const { restaurants } = await apiFetch(`/restaurants?${params}`);
 
     list.innerHTML = restaurants.length
-      ? restaurants.map(restaurantCardHtml).join('')
+      ? `<div class="bento-grid">${restaurants.map((r, i) => restaurantCardHtml(r, i === 0)).join('')}</div>`
       : '<p class="state-msg">Aucun restaurant ne correspond à ta recherche.</p>';
   } catch (error) {
     list.innerHTML = `<p class="state-msg">Impossible de charger les restaurants (${error.message}).</p>`;

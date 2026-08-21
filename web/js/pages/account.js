@@ -2,10 +2,12 @@ import { requireLogin, currentUser, logout } from '../auth.js';
 import { getAddress, promptForAddress } from '../address.js';
 import { cartItemCount } from '../cart.js';
 import { pushSupported, isSubscribed, subscribeToPush } from '../push.js';
+import { webauthnSupported, registerPasskey, listPasskeys } from '../webauthn.js';
 import { escapeHtml } from '../format.js';
 
 const CHEVRON = '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
 const BELL_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>';
+const FINGERPRINT_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 00-5 5v3a5 5 0 0010 0V7a5 5 0 00-5-5z"/><path d="M7 10a5 5 0 0010 0"/><path d="M12 15v7"/><path d="M9 19h6"/></svg>';
 
 function menuRow(href, iconSvg, label, badge = '') {
   return `
@@ -47,13 +49,22 @@ function render() {
       </button>
     </div>
 
-    ${pushSupported() ? `
+    ${pushSupported() || webauthnSupported() ? `
     <div class="menu-list-account">
+      ${pushSupported() ? `
       <button class="menu-row" id="notif-row" type="button">
         <span class="micon">${BELL_ICON}</span>
         Notifications
         <span class="rowbadge" id="notif-status">…</span>
       </button>
+      ` : ''}
+      ${webauthnSupported() ? `
+      <button class="menu-row" id="passkey-row" type="button">
+        <span class="micon">${FINGERPRINT_ICON}</span>
+        Face ID / empreinte
+        <span class="rowbadge" id="passkey-status">…</span>
+      </button>
+      ` : ''}
     </div>
     ` : ''}
 
@@ -118,6 +129,39 @@ function render() {
       const ok = await subscribeToPush();
       statusEl.textContent = ok ? 'Activées' : 'Refusées';
     });
+  }
+
+  const passkeyRow = document.getElementById('passkey-row');
+  if (passkeyRow) {
+    refreshPasskeyStatus();
+
+    passkeyRow.addEventListener('click', async () => {
+      const statusEl = document.getElementById('passkey-status');
+      statusEl.textContent = '…';
+
+      try {
+        const label = `${navigator.platform || 'Appareil'} · ${new Date().toLocaleDateString('fr-FR')}`;
+        await registerPasskey(label);
+      } catch (error) {
+        if (error.name !== 'NotAllowedError') {
+          alert('Activation impossible sur cet appareil.');
+        }
+      }
+
+      refreshPasskeyStatus();
+    });
+  }
+}
+
+async function refreshPasskeyStatus() {
+  const statusEl = document.getElementById('passkey-status');
+  if (!statusEl) return;
+
+  try {
+    const credentials = await listPasskeys();
+    statusEl.textContent = credentials.length > 0 ? `${credentials.length} activée${credentials.length > 1 ? 's' : ''}` : 'Activer';
+  } catch {
+    statusEl.textContent = 'Activer';
   }
 }
 

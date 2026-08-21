@@ -42,7 +42,7 @@ function routeCardHtml(order) {
         <path d="M28,26 C 130,10 220,110 325,96" fill="none" stroke="rgba(31,229,134,.35)" stroke-width="2" stroke-dasharray="1 9" stroke-linecap="round"/>
         <circle cx="28" cy="26" r="6" fill="#1FE586"/>
         <circle cx="325" cy="96" r="6" fill="none" stroke="#2BEBD1" stroke-width="2"/>
-        <circle cx="${dotX}" cy="${dotY}" r="9" fill="#1FE586" opacity=".18"/>
+        <circle class="livedot-ring" cx="${dotX}" cy="${dotY}" r="9" fill="#1FE586" opacity=".18"/>
         <circle cx="${dotX}" cy="${dotY}" r="5" fill="#1FE586"/>
       </svg>
       <span class="pin-label" style="top:12px;left:40px;">${escapeHtml(order.restaurant_name ?? '')}</span>

@@ -9,6 +9,7 @@
 
 *{box-sizing:border-box;}
 [hidden]{display:none !important;}
+
 body{
   margin:0;
   background:
@@ -20,6 +21,15 @@ body{
   font-family:'Sora', system-ui, sans-serif;
   max-width:480px;
   margin-inline:auto;
+}
+
+/* Fond qui "respire" lentement — désactivé si l'utilisateur préfère moins de mouvement. */
+@keyframes bg-breathe{
+  0%,100%{background-position:50% -8%, 100% 24%;}
+  50%{background-position:46% -4%, 96% 30%;}
+}
+@media (prefers-reduced-motion: no-preference){
+  body{animation:bg-breathe 18s ease-in-out infinite;background-size:200% 200%;}
 }
 
 .brand-logo{display:block;width:150px;height:auto;margin:4px 0 10px;}
@@ -58,11 +68,29 @@ body{
   border:1px solid rgba(31,229,134,.3);box-shadow:0 0 30px -12px rgba(31,229,134,.4);
   text-decoration:none;color:inherit;width:100%;font-family:inherit;cursor:pointer;
 }
-.active-order .pulse{width:9px;height:9px;border-radius:50%;background:var(--herb);flex-shrink:0;box-shadow:0 0 0 4px rgba(31,229,134,.18);}
+.active-order .pulse{width:9px;height:9px;border-radius:50%;background:var(--herb);flex-shrink:0;box-shadow:0 0 0 4px rgba(31,229,134,.18);position:relative;}
+.active-order .pulse::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--herb);}
+@media (prefers-reduced-motion: no-preference){
+  .active-order .pulse::after{animation:sonar-ping 1.8s ease-out infinite;}
+}
+@keyframes sonar-ping{0%{transform:scale(1);opacity:.7;}100%{transform:scale(2.6);opacity:0;}}
 .active-order .aotext{flex:1;min-width:0;text-align:left;display:flex;flex-direction:column;gap:1px;}
 .active-order .aotitle{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .active-order .aosub{font-size:11.5px;color:var(--ink-dim);}
 .active-order .aoarrow{color:var(--herb);flex-shrink:0;}
+
+/* ---- Carte "Pour toi ce soir" (accueil) ---- */
+.reco-card{
+  display:flex;align-items:center;gap:12px;padding:11px;border-radius:18px;margin-bottom:18px;
+  background:var(--surface);border:1px solid rgba(43,235,209,.25);
+  text-decoration:none;color:inherit;width:100%;
+}
+.reco-photo{width:52px;height:52px;border-radius:13px;flex-shrink:0;background:linear-gradient(155deg,#1A1C20,#0A0A0C 60%,rgba(43,235,209,.4));}
+.reco-info{flex:1;min-width:0;}
+.reco-eyebrow{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--cola);margin-bottom:2px;}
+.reco-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.reco-sub{font-size:11.5px;color:var(--ink-dim);}
+.reco-cta{display:flex;align-items:center;gap:3px;font-size:12px;font-weight:700;color:var(--cola);flex-shrink:0;}
 
 /* ---- Barre de navigation basse (pages de navigation : accueil, commandes, compte) ---- */
 .bottomnav{
@@ -101,6 +129,17 @@ body{
 
 .rlist{display:flex;flex-direction:column;gap:14px;}
 .rcard{display:flex;gap:12px;padding:10px;border-radius:18px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit;}
+
+/* ---- Grille bento (accueil) — un restaurant mis en avant en pleine largeur, les suivants
+   en grille 2 colonnes plutôt qu'une liste verticale uniforme. ---- */
+.bento-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+.bento-feature{grid-column:1 / -1;flex-direction:column;align-items:stretch;padding:12px;}
+.bento-feature .rphoto{width:100%;height:150px;}
+.bento-feature .rinfo{padding-top:4px;}
+.bento-card{grid-column:span 1;flex-direction:column;align-items:stretch;}
+.bento-card .rphoto{width:100%;height:92px;}
+.bento-card .rinfo{padding-top:4px;}
+.bento-card .rtoprow{flex-direction:column;align-items:flex-start;gap:2px;}
 .rphoto{width:76px;height:76px;border-radius:14px;flex-shrink:0;background:linear-gradient(155deg,#1A1C20,#0A0A0C 60%,rgba(43,235,209,.35));}
 .rinfo{flex:1;min-width:0;padding-top:2px;}
 .rtoprow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
@@ -111,6 +150,21 @@ body{
 .rmetarow{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-dim);}
 .rmetarow .dotsep{width:3px;height:3px;border-radius:50%;background:var(--ink-dim);flex-shrink:0;}
 
+/* ---- Écrans de chargement (squelettes animés, remplacent le texte "Chargement…") ---- */
+.skeleton-rcard{display:flex;gap:12px;padding:10px;border-radius:18px;background:var(--surface);border:1px solid var(--line);margin-bottom:14px;}
+.skel{position:relative;overflow:hidden;background:var(--surface-alt);border-radius:8px;}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);}
+@media (prefers-reduced-motion: no-preference){
+  .skel::after{animation:shimmer 1.6s infinite;}
+}
+@keyframes shimmer{from{transform:translateX(-100%);}to{transform:translateX(100%);}}
+.skel-photo{width:76px;height:76px;border-radius:14px;flex-shrink:0;}
+.skel-lines{flex:1;padding-top:4px;}
+.skel-line{height:11px;border-radius:6px;margin-bottom:8px;}
+.skel-line.w60{width:60%;}
+.skel-line.w40{width:40%;}
+.skel-line.w30{width:30%;}
+
 .state-msg{color:var(--ink-dim);font-size:13.5px;}
 .error-msg{color:var(--chili);font-size:13px;margin:8px 0 0;}
 
@@ -119,12 +173,20 @@ body{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
   border:none;border-radius:999px;padding:13px 20px;font-size:14.5px;font-weight:700;
   font-family:inherit;cursor:pointer;text-decoration:none;
+  transition:transform .12s ease,box-shadow .12s ease;
 }
 .btn-primary{background:var(--accent);color:var(--on-accent);box-shadow:0 8px 22px -8px rgba(31,229,134,.55);}
 .btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--ink);}
 .btn-block{width:100%;}
 .btn:disabled{opacity:.55;cursor:not-allowed;}
+.btn:not(:disabled):active{transform:scale(.96);}
+.btn-primary:not(:disabled):active{box-shadow:0 4px 26px -4px rgba(31,229,134,.75);}
 .link{color:var(--herb);text-decoration:none;font-weight:600;}
+
+/* ---- Micro-interactions au tap — cartes et boutons icône réagissent au toucher ---- */
+.rcard,.add-btn,.icon-btn,.chip,.menu-row,.active-order,.reco-card{transition:transform .12s ease;}
+.rcard:active,.chip:active,.menu-row:active,.active-order:active,.reco-card:active{transform:scale(.98);}
+.add-btn:active,.icon-btn:active{transform:scale(.9);}
 
 /* ---- Barre supérieure avec retour (sous-pages) ---- */
 .topbar{display:flex;align-items:center;gap:12px;padding:18px 20px;}
@@ -204,6 +266,10 @@ body{
 
 .route-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;margin:0 20px 16px;position:relative;overflow:hidden;}
 .route-card svg{display:block;width:100%;height:auto;}
+.livedot-ring{transform-box:fill-box;transform-origin:center;}
+@media (prefers-reduced-motion: no-preference){
+  .livedot-ring{animation:sonar-ping 1.8s ease-out infinite;}
+}
 .pin-label{position:absolute;font-size:10.5px;font-weight:700;color:var(--ink-dim);}
 
 .driver-card{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:13px 15px;margin:0 20px 16px;}

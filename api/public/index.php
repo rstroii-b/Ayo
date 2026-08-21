@@ -11,6 +11,7 @@ use Saveurs\Controllers\PaymentController;
 use Saveurs\Controllers\PushController;
 use Saveurs\Controllers\RealtimeController;
 use Saveurs\Controllers\RestaurantController;
+use Saveurs\Controllers\WebAuthnController;
 use Saveurs\Middleware\AuthMiddleware;
 use Slim\Factory\AppFactory;
 use Slim\Psr7\Factory\ResponseFactory;
@@ -69,6 +70,7 @@ $app->group('/api/v1', function ($group) use ($auth) {
     // Commandes — authentifié, rôle vérifié dans le contrôleur selon la partie prenante
     $group->post('/orders', [OrderController::class, 'create'])->add($auth('client'));
     $group->get('/orders/mine', [OrderController::class, 'mine'])->add($auth('client'));
+    $group->get('/recommendations/mine', [OrderController::class, 'recommendationForClient'])->add($auth('client'));
     $group->get('/orders/{id}', [OrderController::class, 'show'])->add($auth());
     $group->patch('/orders/{id}/status', [OrderController::class, 'updateStatus'])->add($auth());
     $group->patch('/orders/{id}/claim', [OrderController::class, 'claim'])->add($auth('driver'));
@@ -102,6 +104,14 @@ $app->group('/api/v1', function ($group) use ($auth) {
 
     // Temps réel — autorisation des canaux privés Pusher
     $group->post('/realtime/auth', [RealtimeController::class, 'auth'])->add($auth());
+
+    // Connexion biométrique (WebAuthn / passkeys)
+    $group->post('/webauthn/register/options', [WebAuthnController::class, 'registerOptions'])->add($auth());
+    $group->post('/webauthn/register/verify', [WebAuthnController::class, 'registerVerify'])->add($auth());
+    $group->get('/webauthn/credentials', [WebAuthnController::class, 'list'])->add($auth());
+    $group->delete('/webauthn/credentials/{id}', [WebAuthnController::class, 'delete'])->add($auth());
+    $group->post('/webauthn/login/options', [WebAuthnController::class, 'loginOptions']);
+    $group->post('/webauthn/login/verify', [WebAuthnController::class, 'loginVerify']);
 });
 
 $app->run();

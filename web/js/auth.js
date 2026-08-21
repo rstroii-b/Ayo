@@ -14,7 +14,7 @@ export function isLoggedIn() {
   return currentUser() !== null;
 }
 
-async function persistSession(token) {
+export async function persistSession(token) {
   setToken(token);
   // /auth/me est la source de vérité pour le profil (nom, email...) — jamais dans le JWT.
   const profile = await apiFetch('/auth/me');

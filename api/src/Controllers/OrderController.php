@@ -168,6 +168,31 @@ final class OrderController
         return JsonResponse::ok($response, ['orders' => $stmt->fetchAll()]);
     }
 
+    /**
+     * GET /recommendations/mine — "Pour toi ce soir" : le plat le plus souvent recommandé au
+     * client d'après ses commandes livrées. Aucune recommandation renvoyée sans historique réel
+     * (jamais de suggestion inventée), ni si le plat ou le restaurant n'est plus actif.
+     */
+    public function recommendationForClient(Request $request, Response $response): Response
+    {
+        $stmt = Database::connection()->prepare(
+            "SELECT mi.id AS menu_item_id, mi.name, mi.price_cents, r.id AS restaurant_id, r.name AS restaurant_name,
+                    SUM(oi.quantity) AS total_quantity
+             FROM order_items oi
+             JOIN orders o ON o.id = oi.order_id
+             JOIN menu_items mi ON mi.id = oi.menu_item_id
+             JOIN restaurants r ON r.id = mi.restaurant_id
+             WHERE o.client_id = ? AND o.status = 'delivered' AND mi.is_available = 1 AND r.is_active = 1
+             GROUP BY mi.id, mi.name, mi.price_cents, r.id, r.name
+             ORDER BY total_quantity DESC
+             LIMIT 1"
+        );
+        $stmt->execute([$request->getAttribute('user_id')]);
+        $reco = $stmt->fetch();
+
+        return JsonResponse::ok($response, ['recommendation' => $reco === false ? null : $reco]);
+    }
+
     /** GET /orders/{id} */
     public function show(Request $request, Response $response, array $routeArgs): Response
     {

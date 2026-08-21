@@ -221,6 +221,35 @@ CREATE TABLE push_subscriptions (
   CONSTRAINT fk_push_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------
+-- Connexion biométrique (WebAuthn / passkeys)
+-- ---------------------------------------------------------------
+
+CREATE TABLE webauthn_credentials (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id           BIGINT UNSIGNED NOT NULL,
+  credential_id     VARCHAR(255) NOT NULL,
+  public_key        TEXT NOT NULL,
+  sign_count        INT UNSIGNED NOT NULL DEFAULT 0,
+  label             VARCHAR(100) NULL,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_webauthn_credential_id (credential_id),
+  KEY ix_webauthn_user (user_id),
+  CONSTRAINT fk_webauthn_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Défi temporaire entre la génération des options et la vérification de la réponse — l'API
+-- étant sans session (JWT), ce défi doit survivre entre deux requêtes HTTP distinctes.
+CREATE TABLE webauthn_challenges (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id           BIGINT UNSIGNED NOT NULL,
+  challenge         VARCHAR(255) NOT NULL,
+  expires_at        DATETIME NOT NULL,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_webauthn_challenge_user (user_id),
+  CONSTRAINT fk_webauthn_challenge_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------
