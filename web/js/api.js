@@ -11,15 +11,58 @@ export function getToken() {
 
 export function setToken(token) {
   localStorage.setItem('saveurs_token', token);
+  scheduleRefresh(token);
 }
 
 export function clearToken() {
   localStorage.removeItem('saveurs_token');
+  clearTimeout(refreshTimer);
 }
 
 function idempotencyKey() {
   return crypto.randomUUID();
 }
+
+/**
+ * Rafraîchissement silencieux du token — sans ça, le JWT (30 min) expire pendant qu'un client
+ * navigue/hésite, et "Commander" échoue avec une erreur "Jeton invalide ou expiré" (constaté
+ * en prod). On décode juste le payload du JWT (pas de vérification de signature nécessaire,
+ * c'est uniquement pour planifier le prochain rafraîchissement) pour viser 5 min avant
+ * l'expiration réelle plutôt qu'un intervalle fixe fragile face à un changement de durée serveur.
+ */
+let refreshTimer = null;
+
+function decodeJwtExp(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+
+    return typeof payload.exp === 'number' ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+function scheduleRefresh(token) {
+  clearTimeout(refreshTimer);
+
+  const exp = decodeJwtExp(token);
+  if (exp === null) return;
+
+  const msUntilRefresh = Math.max(0, exp * 1000 - Date.now() - 5 * 60 * 1000);
+
+  refreshTimer = setTimeout(async () => {
+    try {
+      const data = await apiFetch('/auth/refresh', { method: 'POST', body: {} });
+      setToken(data.token);
+    } catch {
+      // Le token n'était déjà plus valide (onglet resté ouvert des heures) — rien à faire ici,
+      // la prochaine action protégée déclenchera normalement une redemande de connexion.
+    }
+  }, msUntilRefresh);
+}
+
+// Reprend le cycle de rafraîchissement pour un token déjà en localStorage au chargement de la page.
+scheduleRefresh(getToken());
 
 /**
  * Petit client fetch — ajoute automatiquement le Bearer token et, pour les

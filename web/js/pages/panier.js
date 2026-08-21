@@ -97,6 +97,16 @@ async function startCheckout() {
     btn.textContent = 'Payer maintenant';
     btn.disabled = false;
   } catch (error) {
+    if (error.status === 401) {
+      errorEl.textContent = 'Ta session a expiré — reconnecte-toi pour continuer.';
+      errorEl.hidden = false;
+      setTimeout(() => {
+        window.location.href = `/login.html?next=${encodeURIComponent('/panier.html')}`;
+      }, 1800);
+
+      return;
+    }
+
     errorEl.textContent = error.detail ?? error.message;
     errorEl.hidden = false;
     btn.disabled = false;
