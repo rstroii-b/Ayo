@@ -45,13 +45,21 @@ function renderStripeStatus(restaurant) {
   });
 }
 
+const BUSINESS_TYPE_LABEL = { food: 'Repas', fashion: 'Mode', furniture: 'Meubles', grocery: 'Supermarché' };
+
 function renderForm(restaurant) {
   const content = document.getElementById('settings-content');
 
   content.innerHTML = `
-    <p class="sectitle">Fiche restaurant</p>
+    <p class="sectitle">Fiche commerce</p>
+    <div class="cart-block" style="max-width:420px;margin:0 0 18px;">
+      <div class="sumrow" style="padding:12px 4px;">
+        <span>Type de commerce</span>
+        <span style="color:var(--ink);font-weight:600;">${BUSINESS_TYPE_LABEL[restaurant.business_type] ?? restaurant.business_type}</span>
+      </div>
+    </div>
     <form class="form" id="settings-form" style="padding:0;max-width:420px;">
-      <div class="field"><label for="name">Nom du restaurant</label><input id="name" name="name" value="${escapeHtml(restaurant.name)}" required></div>
+      <div class="field"><label for="name">Nom du commerce</label><input id="name" name="name" value="${escapeHtml(restaurant.name)}" required></div>
       <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" value="${escapeHtml(restaurant.cuisine_origine ?? '')}" placeholder="Sénégal, Cameroun…"></div>
       <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" value="${escapeHtml(restaurant.adresse)}" required></div>
       <div class="field"><label for="lat">Latitude</label><input id="lat" name="lat" type="number" step="any" value="${restaurant.lat}" required></div>

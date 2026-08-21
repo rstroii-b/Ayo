@@ -16,7 +16,17 @@ export function getCart() {
   return read();
 }
 
-/** Ajoute un plat — vide le panier si on change de restaurant (une commande = un seul restaurant). */
+/**
+ * Identifie une ligne de panier — un même article avec des variantes différentes (ex: T-shirt
+ * taille M vs L) doit rester deux lignes distinctes, pas fusionnées.
+ */
+function lineKey(menuItemId, options = []) {
+  const optionIds = options.map((o) => o.id).sort((a, b) => a - b).join(',');
+
+  return `${menuItemId}:${optionIds}`;
+}
+
+/** Ajoute un article — vide le panier si on change de commerce (une commande = un seul commerce). */
 export function addItem(restaurantId, restaurantName, item) {
   const cart = read();
 
@@ -27,7 +37,8 @@ export function addItem(restaurantId, restaurantName, item) {
   cart.restaurantId = restaurantId;
   cart.restaurantName = restaurantName;
 
-  const existing = cart.items.find((line) => line.menuItemId === item.menuItemId);
+  const key = lineKey(item.menuItemId, item.options);
+  const existing = cart.items.find((line) => lineKey(line.menuItemId, line.options) === key);
   if (existing) {
     existing.quantity += 1;
   } else {
@@ -39,11 +50,11 @@ export function addItem(restaurantId, restaurantName, item) {
   return cart;
 }
 
-export function setQuantity(menuItemId, quantity) {
+export function setQuantity(lineIndex, quantity) {
   const cart = read();
   cart.items = quantity <= 0
-    ? cart.items.filter((line) => line.menuItemId !== menuItemId)
-    : cart.items.map((line) => (line.menuItemId === menuItemId ? { ...line, quantity } : line));
+    ? cart.items.filter((_, i) => i !== lineIndex)
+    : cart.items.map((line, i) => (i === lineIndex ? { ...line, quantity } : line));
 
   write(cart);
 

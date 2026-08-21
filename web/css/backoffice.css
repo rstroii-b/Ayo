@@ -52,6 +52,9 @@ body.desktop{max-width:none;margin-inline:0;}
 
 /* ---- Table gestion menu ---- */
 .mtable{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:22px;}
+.variants-panel{background:var(--surface-alt);border-bottom:1px solid var(--line);}
+.variants-panel .mrow{border-bottom:1px solid var(--line);}
+.variants-panel .inline-form{margin-bottom:0;align-items:center;}
 .mrow{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);}
 .mrow:last-child{border-bottom:none;}
 .mrow.head{background:var(--surface-alt);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-dim);font-weight:700;padding:9px 18px;}

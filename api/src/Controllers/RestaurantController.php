@@ -11,6 +11,12 @@ use Saveurs\Support\JsonResponse;
 
 final class RestaurantController
 {
+    private const BUSINESS_TYPES = ['food', 'fashion', 'furniture', 'grocery'];
+
+    // Les meubles se livrent sur créneau programmé plutôt qu'en dispatch instantané (voir §5/6
+    // du document d'architecture) — les autres catégories tiennent dans un sac à dos de livreur.
+    private const SCHEDULED_TYPES = ['furniture'];
+
     /** POST /restaurants — le restaurateur crée sa fiche (préalable à l'onboarding Stripe). */
     public function create(Request $request, Response $response): Response
     {
@@ -22,11 +28,17 @@ final class RestaurantController
             }
         }
 
+        $businessType = $body['business_type'] ?? 'food';
+        if (!in_array($businessType, self::BUSINESS_TYPES, true)) {
+            return JsonResponse::error($response, 422, 'Type de commerce invalide');
+        }
+
+        $deliveryMode = in_array($businessType, self::SCHEDULED_TYPES, true) ? 'scheduled' : 'instant';
         $slug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($body['name'])), '-');
 
         $stmt = Database::connection()->prepare(
-            'INSERT INTO restaurants (owner_id, zone_id, name, slug, siret, adresse, lat, lng, cuisine_origine)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO restaurants (owner_id, zone_id, name, slug, siret, adresse, lat, lng, cuisine_origine, business_type, delivery_mode)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $request->getAttribute('user_id'),
@@ -38,6 +50,8 @@ final class RestaurantController
             $body['lat'],
             $body['lng'],
             $body['cuisine_origine'] ?? null,
+            $businessType,
+            $deliveryMode,
         ]);
 
         return JsonResponse::ok($response, ['restaurant_id' => (int) Database::connection()->lastInsertId()], 201);
@@ -75,7 +89,7 @@ final class RestaurantController
     public function mine(Request $request, Response $response): Response
     {
         $stmt = Database::connection()->prepare(
-            'SELECT id, name, slug, adresse, lat, lng, cuisine_origine, stripe_account_id, commission_pct
+            'SELECT id, name, slug, adresse, lat, lng, cuisine_origine, business_type, delivery_mode, stripe_account_id, commission_pct
              FROM restaurants WHERE owner_id = ? ORDER BY id LIMIT 1'
         );
         $stmt->execute([$request->getAttribute('user_id')]);
@@ -115,11 +129,11 @@ final class RestaurantController
         $categories = $categories->fetchAll();
 
         $items = $db->prepare(
-            'SELECT id, category_id, name, description, price_cents, photo_url, is_available, allergenes
+            'SELECT id, category_id, name, description, price_cents, vat_rate, photo_url, is_available, allergenes
              FROM menu_items WHERE restaurant_id = ?'
         );
         $items->execute([$restaurantId]);
-        $items = $items->fetchAll();
+        $items = $this->attachOptions($db, $items->fetchAll());
 
         foreach ($categories as &$category) {
             $category['items'] = array_values(array_filter(
@@ -131,7 +145,35 @@ final class RestaurantController
         return JsonResponse::ok($response, ['categories' => $categories]);
     }
 
-    /** GET /restaurants?lat=&lng=&region=&q= */
+    /** Ajoute les variantes (item_options) à chaque article, groupées par option_group. */
+    private function attachOptions(\PDO $db, array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        $ids = array_column($items, 'id');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        $stmt = $db->prepare(
+            "SELECT id, menu_item_id, name, option_group, price_delta_cents, stock_quantity
+             FROM item_options WHERE menu_item_id IN ({$placeholders})"
+        );
+        $stmt->execute($ids);
+
+        $byItem = [];
+        foreach ($stmt->fetchAll() as $option) {
+            $byItem[$option['menu_item_id']][] = $option;
+        }
+
+        foreach ($items as &$item) {
+            $item['options'] = $byItem[$item['id']] ?? [];
+        }
+
+        return $items;
+    }
+
+    /** GET /restaurants?lat=&lng=&region=&business_type=&q= */
     public function index(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
@@ -139,6 +181,11 @@ final class RestaurantController
 
         $where = ['is_active = 1'];
         $args = [];
+
+        if (!empty($params['business_type']) && in_array($params['business_type'], self::BUSINESS_TYPES, true)) {
+            $where[] = 'business_type = ?';
+            $args[] = $params['business_type'];
+        }
 
         if (!empty($params['region'])) {
             $where[] = 'cuisine_origine = ?';
@@ -159,14 +206,14 @@ final class RestaurantController
             $lat = (float) $params['lat'];
             $lng = (float) $params['lng'];
 
-            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.lat, r.lng,
+            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.business_type, r.delivery_mode, r.lat, r.lng,
                 z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
                 (6371 * acos(cos(radians(?)) * cos(radians(r.lat)) *
                 cos(radians(r.lng) - radians(?)) + sin(radians(?)) * sin(radians(r.lat)))) AS distance_km";
             $args = array_merge([$lat, $lng, $lat], $args);
             $orderBy = 'distance_km ASC';
         } else {
-            $select = 'r.id, r.name, r.slug, r.cuisine_origine, r.lat, r.lng';
+            $select = 'r.id, r.name, r.slug, r.cuisine_origine, r.business_type, r.delivery_mode, r.lat, r.lng';
         }
 
         $sql = "SELECT {$select} FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
@@ -239,11 +286,11 @@ final class RestaurantController
         $categories = $categories->fetchAll();
 
         $items = $db->prepare(
-            'SELECT id, category_id, name, description, price_cents, photo_url, is_available, allergenes
+            'SELECT id, category_id, name, description, price_cents, vat_rate, photo_url, is_available, allergenes
              FROM menu_items WHERE restaurant_id = ? AND is_available = 1'
         );
         $items->execute([$restaurant['id']]);
-        $items = $items->fetchAll();
+        $items = $this->attachOptions($db, $items->fetchAll());
 
         foreach ($categories as &$category) {
             $category['items'] = array_values(array_filter(
@@ -258,7 +305,7 @@ final class RestaurantController
     private function findRestaurant(string $id): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT id, owner_id, name, slug, adresse, lat, lng, cuisine_origine, commission_pct
+            'SELECT id, owner_id, name, slug, adresse, lat, lng, cuisine_origine, business_type, delivery_mode, commission_pct
              FROM restaurants WHERE id = ? AND is_active = 1'
         );
         $stmt->execute([$id]);

@@ -28,9 +28,36 @@ async function init() {
   }
 }
 
+function variantsPanelHtml(item) {
+  const rows = (item.options ?? []).map((o) => `
+    <div class="mrow" style="padding:8px 18px;">
+      <div class="mname" style="flex:1;font-weight:600;font-size:12.5px;">
+        ${escapeHtml(o.name)}${o.option_group ? `<div class="d">${escapeHtml(o.option_group)}</div>` : ''}
+      </div>
+      <div class="mprice" style="font-size:12px;">${o.price_delta_cents ? formatEuros(o.price_delta_cents) : '—'}</div>
+      <div class="mtoggle" style="font-size:12px;">${o.stock_quantity === null ? 'Stock illimité' : `Stock : ${o.stock_quantity}`}</div>
+      <button class="btn btn-ghost" type="button" data-delete-option-id="${o.id}" data-item-id="${item.id}" style="padding:5px 9px;font-size:11px;">Retirer</button>
+    </div>
+  `).join('') || '<div class="mrow" style="padding:8px 18px;"><p class="state-msg" style="margin:0;">Aucune variante pour l\'instant.</p></div>';
+
+  return `
+    <div class="variants-panel" id="variants-${item.id}" hidden>
+      ${rows}
+      <form class="inline-form" data-add-option-item-id="${item.id}" style="padding:10px 18px;margin-bottom:0;">
+        <div class="field"><input name="name" placeholder="Ex : M, Bleu, Fort…" required style="min-width:100px;"></div>
+        <div class="field"><input name="option_group" placeholder="Groupe (ex : Taille)" style="min-width:100px;"></div>
+        <div class="field"><input name="price_delta_cents" type="number" step="0.10" placeholder="Delta prix €" style="min-width:100px;"></div>
+        <div class="field"><input name="stock_quantity" type="number" min="0" placeholder="Stock (vide = illimité)" style="min-width:120px;"></div>
+        <button class="btn btn-ghost" type="submit" style="padding:8px 14px;font-size:12px;">Ajouter</button>
+      </form>
+    </div>
+  `;
+}
+
 function categoryTableHtml(category) {
   const rows = category.items.map((item) => {
     const photoUrl = safeImageUrl(item.photo_url);
+    const optionCount = item.options?.length ?? 0;
 
     return `
     <div class="mrow">
@@ -44,14 +71,16 @@ function categoryTableHtml(category) {
         ${item.is_available ? 'Actif' : 'Épuisé'}
       </div>
       <button class="btn btn-ghost" type="button" data-photo-item-id="${item.id}" style="padding:6px 10px;font-size:11.5px;">Photo</button>
+      <button class="btn btn-ghost" type="button" data-toggle-variants="${item.id}" style="padding:6px 10px;font-size:11.5px;">Variantes${optionCount ? ` (${optionCount})` : ''}</button>
     </div>
+    ${variantsPanelHtml(item)}
   `;
-  }).join('') || '<div class="mrow"><p class="state-msg" style="margin:0;">Aucun plat dans cette catégorie.</p></div>';
+  }).join('') || '<div class="mrow"><p class="state-msg" style="margin:0;">Aucun article dans cette catégorie.</p></div>';
 
   return `
     <p class="sectitle">${escapeHtml(category.name)}</p>
     <div class="mtable">
-      <div class="mrow head"><div style="width:38px;flex-shrink:0;"></div><div class="mname">Plat</div><div class="mprice">Prix</div><div class="mtoggle">Disponible</div><div style="width:64px;flex-shrink:0;"></div></div>
+      <div class="mrow head"><div style="width:38px;flex-shrink:0;"></div><div class="mname">Article</div><div class="mprice">Prix</div><div class="mtoggle">Disponible</div><div style="width:150px;flex-shrink:0;"></div></div>
       ${rows}
     </div>
   `;
@@ -70,17 +99,18 @@ async function loadMenu() {
       <button class="btn btn-ghost" type="submit">Ajouter</button>
     </form>
 
-    <p class="sectitle">Ajouter un plat</p>
+    <p class="sectitle">Ajouter un article</p>
     <form class="inline-form" id="item-form">
       <div class="field">
         <select name="category_id" required>
           ${categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
       </div>
-      <div class="field"><input name="name" placeholder="Nom du plat" required></div>
+      <div class="field"><input name="name" placeholder="Nom de l'article" required></div>
       <div class="field"><input name="price" type="number" step="0.10" min="0" placeholder="Prix en €" required></div>
+      <div class="field"><input name="vat_rate" type="number" step="0.1" min="0" max="100" placeholder="TVA % (10 par défaut)"></div>
       <div class="field"><input name="photo_url" type="url" placeholder="URL de la photo (facultatif)"></div>
-      <button class="btn btn-primary" type="submit">Ajouter le plat</button>
+      <button class="btn btn-primary" type="submit">Ajouter l'article</button>
     </form>
     <p class="error-msg" id="menu-error" hidden></p>
   `;
@@ -90,11 +120,42 @@ async function loadMenu() {
 
   content.querySelectorAll('.sw').forEach((btn) => btn.addEventListener('click', onToggleAvailability));
   content.querySelectorAll('[data-photo-item-id]').forEach((btn) => btn.addEventListener('click', onEditPhoto));
+  content.querySelectorAll('[data-toggle-variants]').forEach((btn) => btn.addEventListener('click', onToggleVariants));
+  content.querySelectorAll('[data-delete-option-id]').forEach((btn) => btn.addEventListener('click', onDeleteOption));
+  content.querySelectorAll('[data-add-option-item-id]').forEach((form) => form.addEventListener('submit', onAddOption));
+}
+
+function onToggleVariants(event) {
+  const panel = document.getElementById(`variants-${event.currentTarget.dataset.toggleVariants}`);
+  panel.hidden = !panel.hidden;
+}
+
+async function onAddOption(event) {
+  event.preventDefault();
+  const itemId = event.target.dataset.addOptionItemId;
+  const form = new FormData(event.target);
+
+  await apiFetch(`/restaurants/${restaurantId}/menu/items/${itemId}/options`, {
+    method: 'POST',
+    body: {
+      name: form.get('name'),
+      option_group: form.get('option_group') || null,
+      price_delta_cents: form.get('price_delta_cents') ? Math.round(Number(form.get('price_delta_cents')) * 100) : 0,
+      stock_quantity: form.get('stock_quantity') ? Number(form.get('stock_quantity')) : null,
+    },
+  });
+  loadMenu();
+}
+
+async function onDeleteOption(event) {
+  const { deleteOptionId, itemId } = event.currentTarget.dataset;
+  await apiFetch(`/restaurants/${restaurantId}/menu/items/${itemId}/options/${deleteOptionId}`, { method: 'DELETE' });
+  loadMenu();
 }
 
 async function onEditPhoto(event) {
   const itemId = event.currentTarget.dataset.photoItemId;
-  const url = prompt('URL de la photo du plat (laisser vide pour la retirer) :');
+  const url = prompt('URL de la photo (laisser vide pour la retirer) :');
 
   if (url === null) return;
 
@@ -127,6 +188,7 @@ async function onAddItem(event) {
         category_id: Number(form.get('category_id')),
         name: form.get('name'),
         price_cents: Math.round(Number(form.get('price')) * 100),
+        vat_rate: form.get('vat_rate') ? Number(form.get('vat_rate')) : 10.00,
         photo_url: form.get('photo_url') || null,
       },
     });

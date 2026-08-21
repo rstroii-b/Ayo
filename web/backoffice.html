@@ -40,7 +40,16 @@
         <div id="setup-block" hidden>
           <p class="sectitle">Créez votre restaurant pour commencer</p>
           <form class="form" id="setup-form" style="padding:0;max-width:420px;">
-            <div class="field"><label for="name">Nom du restaurant</label><input id="name" name="name" required></div>
+            <div class="field"><label for="name">Nom du commerce</label><input id="name" name="name" required></div>
+            <div class="field">
+              <label for="business_type">Type de commerce</label>
+              <select id="business_type" name="business_type">
+                <option value="food">Repas</option>
+                <option value="fashion">Mode</option>
+                <option value="furniture">Meubles</option>
+                <option value="grocery">Supermarché</option>
+              </select>
+            </div>
             <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" placeholder="Sénégal, Cameroun…"></div>
             <div class="field"><label for="siret">SIRET</label><input id="siret" name="siret" required maxlength="14"></div>
             <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" required></div>

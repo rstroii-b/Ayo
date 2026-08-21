@@ -28,15 +28,16 @@ function renderCart() {
   document.getElementById('cart-view').hidden = false;
   document.getElementById('restaurant-name').textContent = cart.restaurantName ?? '';
 
-  document.getElementById('cart-lines').innerHTML = cart.items.map((line) => `
+  document.getElementById('cart-lines').innerHTML = cart.items.map((line, i) => `
     <div class="cart-line">
-      <div class="qty" data-item-id="${line.menuItemId}">
+      <div class="qty" data-line-index="${i}">
         <button type="button" data-delta="-1" aria-label="Diminuer la quantité de ${escapeHtml(line.name)}">−</button>
         <span class="n">${line.quantity}</span>
         <button type="button" data-delta="1" aria-label="Augmenter la quantité de ${escapeHtml(line.name)}">+</button>
       </div>
       <div class="cline-info">
         <div class="cline-name">${escapeHtml(line.name)}</div>
+        ${line.options?.length ? `<span class="state-msg">${escapeHtml(line.options.map((o) => o.name).join(', '))}</span>` : ''}
         <span class="price">${formatEuros(line.priceCents * line.quantity)}</span>
       </div>
     </div>
@@ -49,10 +50,10 @@ document.getElementById('cart-lines').addEventListener('click', (event) => {
   const btn = event.target.closest('button[data-delta]');
   if (!btn) return;
 
-  const itemId = Number(btn.closest('.qty').dataset.itemId);
+  const lineIndex = Number(btn.closest('.qty').dataset.lineIndex);
   const cart = getCart();
-  const line = cart.items.find((l) => l.menuItemId === itemId);
-  setQuantity(itemId, line.quantity + Number(btn.dataset.delta));
+  const line = cart.items[lineIndex];
+  setQuantity(lineIndex, line.quantity + Number(btn.dataset.delta));
   renderCart();
 });
 
@@ -80,7 +81,11 @@ async function startCheckout() {
       method: 'POST',
       body: {
         restaurant_id: cart.restaurantId,
-        items: cart.items.map((line) => ({ menu_item_id: line.menuItemId, quantity: line.quantity })),
+        items: cart.items.map((line) => ({
+          menu_item_id: line.menuItemId,
+          quantity: line.quantity,
+          option_ids: line.options?.map((o) => o.id) ?? [],
+        })),
         delivery_address: { lat: DEMO_LAT, lng: DEMO_LNG, label: address },
       },
     });

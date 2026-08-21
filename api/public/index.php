@@ -66,6 +66,12 @@ $app->group('/api/v1', function ($group) use ($auth) {
         ->add($auth('restaurant_owner'));
     $group->patch('/restaurants/{id}/menu/items/{itemId}', [MenuController::class, 'update'])
         ->add($auth('restaurant_owner'));
+    $group->post('/restaurants/{id}/menu/items/{itemId}/options', [MenuController::class, 'createOption'])
+        ->add($auth('restaurant_owner'));
+    $group->patch('/restaurants/{id}/menu/items/{itemId}/options/{optionId}', [MenuController::class, 'updateOption'])
+        ->add($auth('restaurant_owner'));
+    $group->delete('/restaurants/{id}/menu/items/{itemId}/options/{optionId}', [MenuController::class, 'deleteOption'])
+        ->add($auth('restaurant_owner'));
 
     // Commandes — authentifié, rôle vérifié dans le contrôleur selon la partie prenante
     $group->post('/orders', [OrderController::class, 'create'])->add($auth('client'));

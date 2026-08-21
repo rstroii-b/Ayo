@@ -6,6 +6,13 @@ import { escapeHtml, formatEuros } from '../format.js';
 const DEMO_LAT = 48.8566;
 const DEMO_LNG = 2.3522;
 
+const CATEGORY_COPY = {
+  food: { heading: 'Restaurants près de toi', placeholder: 'Plat, restaurant, région d\'Afrique…', empty: 'Aucun restaurant ne correspond à ta recherche.' },
+  fashion: { heading: 'Boutiques mode près de toi', placeholder: 'Vêtement, boutique…', empty: 'Aucune boutique ne correspond à ta recherche.' },
+  furniture: { heading: 'Meubles près de toi', placeholder: 'Meuble, magasin…', empty: 'Aucun magasin ne correspond à ta recherche.' },
+  grocery: { heading: 'Supermarchés près de toi', placeholder: 'Produit, supermarché…', empty: 'Aucun supermarché ne correspond à ta recherche.' },
+};
+
 function restaurantCardHtml(restaurant, isFeatured) {
   const hasEstimate = restaurant.delivery_fee_cents !== undefined;
 
@@ -49,11 +56,11 @@ function skeletonHtml() {
   `;
 }
 
-async function loadRestaurants({ region = '', q = '' } = {}) {
+async function loadRestaurants({ businessType = 'food', region = '', q = '' } = {}) {
   const list = document.getElementById('restaurant-list');
   list.innerHTML = skeletonHtml();
 
-  const params = new URLSearchParams({ lat: DEMO_LAT, lng: DEMO_LNG });
+  const params = new URLSearchParams({ lat: DEMO_LAT, lng: DEMO_LNG, business_type: businessType });
   if (region) params.set('region', region);
   if (q) params.set('q', q);
 
@@ -62,14 +69,35 @@ async function loadRestaurants({ region = '', q = '' } = {}) {
 
     list.innerHTML = restaurants.length
       ? `<div class="bento-grid">${restaurants.map((r, i) => restaurantCardHtml(r, i === 0)).join('')}</div>`
-      : '<p class="state-msg">Aucun restaurant ne correspond à ta recherche.</p>';
+      : `<p class="state-msg">${CATEGORY_COPY[businessType].empty}</p>`;
   } catch (error) {
-    list.innerHTML = `<p class="state-msg">Impossible de charger les restaurants (${error.message}).</p>`;
+    list.innerHTML = `<p class="state-msg">Impossible de charger les commerces (${error.message}).</p>`;
   }
 }
 
 export function initHomePage() {
   let activeRegion = '';
+  let activeType = 'food';
+
+  document.getElementById('business-type-tabs').addEventListener('click', (event) => {
+    const tile = event.target.closest('.cat-tile');
+    if (!tile || tile.classList.contains('active')) return;
+
+    document.querySelectorAll('.cat-tile').forEach((t) => t.classList.remove('active'));
+    tile.classList.add('active');
+    activeType = tile.dataset.type;
+
+    const copy = CATEGORY_COPY[activeType];
+    document.getElementById('list-heading').textContent = copy.heading;
+    document.getElementById('search-input').placeholder = copy.placeholder;
+
+    // Les chips région (cuisine d'origine) n'ont de sens que pour les repas.
+    document.getElementById('region-chips').hidden = activeType !== 'food';
+    activeRegion = '';
+    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c.dataset.region === ''));
+
+    loadRestaurants({ businessType: activeType, q: document.getElementById('search-input').value });
+  });
 
   document.getElementById('region-chips').addEventListener('click', (event) => {
     const chip = event.target.closest('.chip');
@@ -78,14 +106,14 @@ export function initHomePage() {
     document.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
     chip.classList.add('active');
     activeRegion = chip.dataset.region;
-    loadRestaurants({ region: activeRegion, q: document.getElementById('search-input').value });
+    loadRestaurants({ businessType: activeType, region: activeRegion, q: document.getElementById('search-input').value });
   });
 
   let debounceTimer;
   document.getElementById('search-input').addEventListener('input', (event) => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      loadRestaurants({ region: activeRegion, q: event.target.value });
+      loadRestaurants({ businessType: activeType, region: activeRegion, q: event.target.value });
     }, 300);
   });
 

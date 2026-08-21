@@ -32,6 +32,25 @@
     <div id="recommendation-slot"></div>
     <h1 class="title">Qu'est-ce qui te fait envie&nbsp;?</h1>
 
+    <div class="cat-row" id="business-type-tabs">
+      <button class="cat-tile active" data-type="food" type="button">
+        <span class="cat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v7a2 2 0 002 2v11"/><path d="M6 2v7"/><path d="M10 2v7"/><path d="M18 2c-2 0-3 2-3 6s1 4 3 4v10"/></svg></span>
+        Repas
+      </button>
+      <button class="cat-tile" data-type="fashion" type="button">
+        <span class="cat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4L4 7l2 3 2-1.5V21h8V8.5L18 10l2-3-4-3-2 2h-4z"/></svg></span>
+        Mode
+      </button>
+      <button class="cat-tile" data-type="furniture" type="button">
+        <span class="cat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11V8a2 2 0 012-2h10a2 2 0 012 2v3"/><path d="M4 11h16a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3a1 1 0 011-1z"/><path d="M5 16v3M19 16v3"/></svg></span>
+        Meubles
+      </button>
+      <button class="cat-tile" data-type="grocery" type="button">
+        <span class="cat-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h15l-1.5 9h-13z"/><path d="M6 6L5 3H2"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg></span>
+        Supermarché
+      </button>
+    </div>
+
     <div class="search">
       <input id="search-input" type="search" placeholder="Plat, restaurant, région d'Afrique…" autocomplete="off">
     </div>
@@ -46,7 +65,7 @@
     </div>
 
     <section>
-      <h2 class="sechead">Restaurants près de toi</h2>
+      <h2 class="sechead" id="list-heading">Restaurants près de toi</h2>
       <div id="restaurant-list" class="rlist" aria-live="polite">
         <p class="state-msg">Chargement des restaurants…</p>
       </div>

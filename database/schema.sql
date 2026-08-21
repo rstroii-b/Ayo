@@ -72,6 +72,8 @@ CREATE TABLE restaurants (
   cuisine_origine   VARCHAR(80) NULL,        -- ex: 'Sénégal', 'Côte d'Ivoire'
   stripe_account_id VARCHAR(64) NULL,        -- compte Stripe Connect Express du restaurant
   commission_pct    DECIMAL(4,2) NOT NULL DEFAULT 20.00,
+  business_type     ENUM('food','fashion','furniture','grocery') NOT NULL DEFAULT 'food',
+  delivery_mode     ENUM('instant','scheduled') NOT NULL DEFAULT 'instant', -- 'scheduled' pour les meubles (phase 2)
   is_active         TINYINT(1) NOT NULL DEFAULT 1,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -98,6 +100,7 @@ CREATE TABLE menu_items (
   name              VARCHAR(150) NOT NULL,
   description       VARCHAR(500) NULL,
   price_cents       INT UNSIGNED NOT NULL,
+  vat_rate          DECIMAL(4,2) NOT NULL DEFAULT 10.00, -- restauration 10% par défaut ; à ajuster par article pour mode/meubles/épicerie
   photo_url         VARCHAR(255) NULL,
   is_available      TINYINT(1) NOT NULL DEFAULT 1,
   allergenes        VARCHAR(255) NULL,

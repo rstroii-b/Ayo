@@ -77,23 +77,62 @@ final class OrderController
         $itemIds = array_column($body['items'], 'menu_item_id');
         $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
         $priceStmt = $db->prepare(
-            "SELECT id, price_cents FROM menu_items WHERE id IN ({$placeholders}) AND restaurant_id = ? AND is_available = 1"
+            "SELECT id, price_cents, vat_rate FROM menu_items WHERE id IN ({$placeholders}) AND restaurant_id = ? AND is_available = 1"
         );
         $priceStmt->execute([...$itemIds, $restaurantId]);
-        $prices = array_column($priceStmt->fetchAll(), 'price_cents', 'id');
+        $menuItems = [];
+        foreach ($priceStmt->fetchAll() as $row) {
+            $menuItems[(int) $row['id']] = $row;
+        }
+
+        // Variantes (item_options) — taille/couleur pour la mode, niveau de piment pour un plat...
+        $optionsStmt = $db->prepare(
+            "SELECT id, menu_item_id, name, price_delta_cents, stock_quantity FROM item_options WHERE menu_item_id IN ({$placeholders})"
+        );
+        $optionsStmt->execute($itemIds);
+        $optionsById = [];
+        foreach ($optionsStmt->fetchAll() as $option) {
+            $optionsById[(int) $option['id']] = $option;
+        }
 
         $subtotalCents = 0;
+        $tvaCents = 0;
         $orderItems = [];
+        $stockDecrements = []; // option_id => quantité totale à décrémenter
 
         foreach ($body['items'] as $line) {
             $menuItemId = (int) $line['menu_item_id'];
-            if (!isset($prices[$menuItemId])) {
-                return JsonResponse::error($response, 422, 'Plat indisponible', (string) $menuItemId);
+            if (!isset($menuItems[$menuItemId])) {
+                return JsonResponse::error($response, 422, 'Article indisponible', (string) $menuItemId);
             }
             $quantity = max(1, (int) ($line['quantity'] ?? 1));
-            $lineTotal = $prices[$menuItemId] * $quantity;
+
+            $unitPriceCents = (int) $menuItems[$menuItemId]['price_cents'];
+            $selectedOptions = [];
+            foreach ((array) ($line['option_ids'] ?? []) as $optionId) {
+                $optionId = (int) $optionId;
+                $option = $optionsById[$optionId] ?? null;
+
+                // Sécurité : une option doit appartenir à l'article commandé, jamais un autre.
+                if ($option === null || (int) $option['menu_item_id'] !== $menuItemId) {
+                    return JsonResponse::error($response, 422, 'Variante invalide', (string) $optionId);
+                }
+
+                $unitPriceCents += (int) $option['price_delta_cents'];
+                $selectedOptions[] = ['id' => $optionId, 'name' => $option['name'], 'price_delta_cents' => (int) $option['price_delta_cents']];
+
+                if ($option['stock_quantity'] !== null) {
+                    $stockDecrements[$optionId] = ($stockDecrements[$optionId] ?? 0) + $quantity;
+                    if ($stockDecrements[$optionId] > (int) $option['stock_quantity']) {
+                        return JsonResponse::error($response, 422, 'Stock insuffisant', $option['name']);
+                    }
+                }
+            }
+
+            $lineTotal = $unitPriceCents * $quantity;
             $subtotalCents += $lineTotal;
-            $orderItems[] = [$menuItemId, $quantity, $prices[$menuItemId], json_encode($line['option_ids'] ?? [])];
+            $tvaCents += (int) round($lineTotal * ((float) $menuItems[$menuItemId]['vat_rate'] / 100));
+            $orderItems[] = [$menuItemId, $quantity, $unitPriceCents, json_encode($selectedOptions)];
         }
 
         $distanceKm = $this->haversineKm(
@@ -109,7 +148,8 @@ final class OrderController
         $surge = (float) ($restaurant['surge_multiplier'] ?? 1.0);
 
         $deliveryFeeCents = (int) round(max($minFee, $baseFee + $distanceKm * $perKm) * $surge);
-        $tvaCents = (int) round($subtotalCents * 0.10); // TVA restauration 10% — voir §7, à affiner selon mandataire/commissionnaire
+        // TVA calculée par ligne (chaque article porte son propre taux — voir §7) plutôt qu'un taux
+        // fixe restauration : un panier peut mélanger plusieurs taux (ex: supermarché).
         $totalCents = $subtotalCents + $deliveryFeeCents + $tvaCents;
 
         $db->beginTransaction();
@@ -131,6 +171,22 @@ final class OrderController
             );
             foreach ($orderItems as [$menuItemId, $quantity, $priceCents, $optionsJson]) {
                 $itemStmt->execute([$orderId, $menuItemId, $quantity, $priceCents, $optionsJson]);
+            }
+
+            // Décrément atomique — la clause stock_quantity >= ? empêche une vente en double si
+            // deux commandes touchent le même stock limité en même temps (ex: dernière taille M).
+            if ($stockDecrements !== []) {
+                $stockStmt = $db->prepare(
+                    'UPDATE item_options SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?'
+                );
+                foreach ($stockDecrements as $optionId => $qty) {
+                    $stockStmt->execute([$qty, $optionId, $qty]);
+                    if ($stockStmt->rowCount() === 0) {
+                        $db->rollBack();
+
+                        return JsonResponse::error($response, 409, 'Stock insuffisant pour une variante choisie');
+                    }
+                }
             }
 
             $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "pending", "client")')
