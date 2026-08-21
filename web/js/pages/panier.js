@@ -2,7 +2,7 @@ import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
 import { getAddress } from '../address.js';
 import { getCart, setQuantity, cartSubtotalCents, clearCart } from '../cart.js';
-import { formatEuros, escapeHtml } from '../format.js';
+import { formatMoney, escapeHtml } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
 
 // Pas de géocodage d'adresse texte→coordonnées dans ce squelette — la position réelle de
@@ -39,12 +39,12 @@ function renderCart() {
       <div class="cline-info">
         <div class="cline-name">${escapeHtml(line.name)}</div>
         ${line.options?.length ? `<span class="state-msg">${escapeHtml(line.options.map((o) => o.name).join(', '))}</span>` : ''}
-        <span class="price">${formatEuros(line.priceCents * line.quantity)}</span>
+        <span class="price">${formatMoney(line.priceCents * line.quantity, cart.currency)}</span>
       </div>
     </div>
   `).join('');
 
-  document.getElementById('sum-subtotal').textContent = formatEuros(cartSubtotalCents(cart));
+  document.getElementById('sum-subtotal').textContent = formatMoney(cartSubtotalCents(cart), cart.currency);
 }
 
 document.getElementById('cart-lines').addEventListener('click', (event) => {

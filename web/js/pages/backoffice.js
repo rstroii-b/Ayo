@@ -1,8 +1,10 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
-import { formatEuros, escapeHtml } from '../format.js';
+import { formatMoney, escapeHtml } from '../format.js';
 import { realtimeClient } from '../realtime.js';
 import { getCurrentPosition } from '../geolocation.js';
+
+let currency = 'EUR';
 
 if (requireLogin('/backoffice.html')) {
   init();
@@ -16,6 +18,7 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 async function init() {
   try {
     const restaurant = await apiFetch('/restaurant/mine');
+    currency = restaurant.currency ?? 'EUR';
     document.getElementById('restaurant-name-foot').textContent = restaurant.name;
     renderStripeStatus(restaurant);
     document.getElementById('board').hidden = false;
@@ -128,7 +131,7 @@ function orderCardHtml(order, columnKey) {
       <div class="client">${escapeHtml(order.client_first_name)}</div>
       <div class="items">${escapeHtml(order.items_summary)}</div>
       ${order.note_livreur ? `<div class="note">"${escapeHtml(order.note_livreur)}"</div>` : ''}
-      <span class="total">${formatEuros(order.total_cents)}</span>
+      <span class="total">${formatMoney(order.total_cents, currency)}</span>
       ${actions}
     </div>
   `;

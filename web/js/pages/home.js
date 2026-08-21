@@ -1,5 +1,5 @@
 import { apiFetch } from '../api.js';
-import { escapeHtml, formatEuros } from '../format.js';
+import { escapeHtml, formatMoney } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
 
 // Position par défaut si la géolocalisation est refusée/indisponible (Paris) — sert de repli,
@@ -23,7 +23,7 @@ function restaurantCardHtml(restaurant, isFeatured) {
       <div class="rinfo">
         <div class="rtoprow">
           <div class="rname">${escapeHtml(restaurant.name)}</div>
-          ${hasEstimate ? `<span class="rfee">${formatEuros(restaurant.delivery_fee_cents)}</span>` : ''}
+          ${hasEstimate ? `<span class="rfee">${formatMoney(restaurant.delivery_fee_cents, restaurant.currency)}</span>` : ''}
         </div>
         ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
         <div class="rmetarow">

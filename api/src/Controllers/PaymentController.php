@@ -27,7 +27,13 @@ final class PaymentController
         }
 
         $db = Database::connection();
-        $stmt = $db->prepare('SELECT id, client_id, status, total_cents, payment_intent_id FROM orders WHERE id = ?');
+        $stmt = $db->prepare(
+            'SELECT o.id, o.client_id, o.status, o.total_cents, o.payment_intent_id, z.currency
+             FROM orders o
+             JOIN restaurants r ON r.id = o.restaurant_id
+             LEFT JOIN delivery_zones z ON z.id = r.zone_id
+             WHERE o.id = ?'
+        );
         $stmt->execute([$body['order_id']]);
         $order = $stmt->fetch();
 
@@ -37,6 +43,20 @@ final class PaymentController
 
         if ($order['status'] !== 'pending') {
             return JsonResponse::error($response, 409, 'Cette commande ne peut plus être payée');
+        }
+
+        // Le paiement par carte (Stripe) n'est branché que pour la zone EUR pour l'instant —
+        // les zones en Franc CFA (ex: Abidjan) attendent une intégration mobile money dédiée
+        // (Wave/Orange Money via CinetPay), pas encore réalisée. Mieux vaut bloquer proprement
+        // que de facturer le mauvais montant dans la mauvaise devise.
+        $currency = $order['currency'] ?? 'EUR';
+        if ($currency !== 'EUR') {
+            return JsonResponse::error(
+                $response,
+                501,
+                'Paiement par carte indisponible pour cette zone',
+                "Le paiement mobile money pour la devise {$currency} n'est pas encore disponible."
+            );
         }
 
         try {

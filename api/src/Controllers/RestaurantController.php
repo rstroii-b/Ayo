@@ -89,8 +89,10 @@ final class RestaurantController
     public function mine(Request $request, Response $response): Response
     {
         $stmt = Database::connection()->prepare(
-            'SELECT id, name, slug, adresse, lat, lng, cuisine_origine, business_type, delivery_mode, stripe_account_id, commission_pct
-             FROM restaurants WHERE owner_id = ? ORDER BY id LIMIT 1'
+            'SELECT r.id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.business_type, r.delivery_mode,
+                    r.stripe_account_id, r.commission_pct, COALESCE(z.currency, "EUR") AS currency
+             FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
+             WHERE r.owner_id = ? ORDER BY r.id LIMIT 1'
         );
         $stmt->execute([$request->getAttribute('user_id')]);
         $restaurant = $stmt->fetch();
@@ -207,13 +209,13 @@ final class RestaurantController
             $lng = (float) $params['lng'];
 
             $select = "r.id, r.name, r.slug, r.cuisine_origine, r.business_type, r.delivery_mode, r.lat, r.lng,
-                z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
+                COALESCE(z.currency, 'EUR') AS currency, z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
                 (6371 * acos(cos(radians(?)) * cos(radians(r.lat)) *
                 cos(radians(r.lng) - radians(?)) + sin(radians(?)) * sin(radians(r.lat)))) AS distance_km";
             $args = array_merge([$lat, $lng, $lat], $args);
             $orderBy = 'distance_km ASC';
         } else {
-            $select = 'r.id, r.name, r.slug, r.cuisine_origine, r.business_type, r.delivery_mode, r.lat, r.lng';
+            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.business_type, r.delivery_mode, r.lat, r.lng, COALESCE(z.currency, 'EUR') AS currency";
         }
 
         $sql = "SELECT {$select} FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
@@ -305,8 +307,10 @@ final class RestaurantController
     private function findRestaurant(string $id): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT id, owner_id, name, slug, adresse, lat, lng, cuisine_origine, business_type, delivery_mode, commission_pct
-             FROM restaurants WHERE id = ? AND is_active = 1'
+            'SELECT r.id, r.owner_id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.business_type,
+                    r.delivery_mode, r.commission_pct, COALESCE(z.currency, "EUR") AS currency
+             FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
+             WHERE r.id = ? AND r.is_active = 1'
         );
         $stmt->execute([$id]);
         $restaurant = $stmt->fetch();

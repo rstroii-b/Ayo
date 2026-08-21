@@ -44,6 +44,7 @@ CREATE TABLE delivery_zones (
   name              VARCHAR(120) NOT NULL,
   ville             VARCHAR(120) NOT NULL,
   polygon_geojson   JSON NULL,
+  currency          CHAR(3) NOT NULL DEFAULT 'EUR', -- ISO 4217 ; XOF (Franc CFA) n'a pas de sous-unité utilisée en pratique
   base_fee_cents    INT UNSIGNED NOT NULL DEFAULT 150,
   price_per_km_cents INT UNSIGNED NOT NULL DEFAULT 40,
   min_fee_cents     INT UNSIGNED NOT NULL DEFAULT 190,
@@ -259,5 +260,10 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- Données de démonstration minimales
 -- ---------------------------------------------------------------
 
-INSERT INTO delivery_zones (id, name, ville, base_fee_cents, price_per_km_cents, min_fee_cents)
-VALUES (1, 'Paris intra-muros', 'Paris', 150, 40, 190);
+INSERT INTO delivery_zones (id, name, ville, currency, base_fee_cents, price_per_km_cents, min_fee_cents)
+VALUES (1, 'Paris intra-muros', 'Paris', 'EUR', 150, 40, 190);
+
+-- Zone Abidjan — fondation pour un futur lancement Côte d'Ivoire (voir le sujet paiement mobile
+-- money, distinct de Stripe, à traiter séparément). Tarifs de départ approximatifs, à ajuster.
+INSERT INTO delivery_zones (id, name, ville, currency, base_fee_cents, price_per_km_cents, min_fee_cents)
+VALUES (2, 'Abidjan', 'Abidjan', 'XOF', 50000, 15000, 100000);

@@ -1,8 +1,9 @@
 import { apiFetch } from '../api.js';
 import { addItem, getCart, cartSubtotalCents, cartItemCount } from '../cart.js';
-import { formatEuros, escapeHtml, safeImageUrl } from '../format.js';
+import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
 
 const restaurantId = new URLSearchParams(window.location.search).get('id');
+let currency = 'EUR'; // écrasé après le chargement de la fiche commerce (voir load())
 
 function renderCartBar() {
   const cart = getCart();
@@ -17,7 +18,7 @@ function renderCartBar() {
   bar.hidden = false;
   const count = cartItemCount(cart);
   document.getElementById('cart-summary').textContent =
-    `Voir le panier · ${count} article${count > 1 ? 's' : ''} · ${formatEuros(cartSubtotalCents(cart))}`;
+    `Voir le panier · ${count} article${count > 1 ? 's' : ''} · ${formatMoney(cartSubtotalCents(cart), cart.currency)}`;
 }
 
 /** Groupe les variantes par option_group — un groupe nommé = un choix obligatoire (taille,
@@ -48,7 +49,7 @@ function variantPanelHtml(item) {
         ${opts.map((o) => `
           <button type="button" class="vchip" data-option-id="${o.id}" data-option-name="${escapeHtml(o.name)}" data-group="${escapeHtml(group)}" data-delta="${o.price_delta_cents}"
             ${o.stock_quantity === 0 ? 'disabled' : ''}>
-            ${escapeHtml(o.name)}${o.price_delta_cents ? ` (${o.price_delta_cents > 0 ? '+' : ''}${formatEuros(o.price_delta_cents)})` : ''}
+            ${escapeHtml(o.name)}${o.price_delta_cents ? ` (${o.price_delta_cents > 0 ? '+' : ''}${formatMoney(o.price_delta_cents, currency)})` : ''}
           </button>
         `).join('')}
       </div>
@@ -61,7 +62,7 @@ function variantPanelHtml(item) {
       <div class="vchip-row">
         ${loose.map((o) => `
           <button type="button" class="vchip vchip-toggle" data-option-id="${o.id}" data-option-name="${escapeHtml(o.name)}" data-delta="${o.price_delta_cents}">
-            ${escapeHtml(o.name)}${o.price_delta_cents ? ` (+${formatEuros(o.price_delta_cents)})` : ''}
+            ${escapeHtml(o.name)}${o.price_delta_cents ? ` (+${formatMoney(o.price_delta_cents, currency)})` : ''}
           </button>
         `).join('')}
       </div>
@@ -91,7 +92,7 @@ function menuItemHtml(item) {
         <div class="iname">${escapeHtml(item.name)}</div>
         ${item.description ? `<div class="idesc">${escapeHtml(item.description)}</div>` : ''}
         <div class="ibottom">
-          <span class="price">${formatEuros(item.price_cents)}</span>
+          <span class="price">${formatMoney(item.price_cents, currency)}</span>
           <button class="add-btn" type="button" data-item-id="${item.id}" data-name="${escapeHtml(item.name)}" data-price="${item.price_cents}"
             data-has-options="${hasOptions ? 1 : 0}" aria-label="Ajouter ${escapeHtml(item.name)} au panier">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -123,7 +124,7 @@ function updateVariantConfirmButton(panel) {
   });
 
   confirmBtn.disabled = !allGroupsChosen;
-  confirmBtn.textContent = allGroupsChosen ? `Ajouter · ${formatEuros(priceCents)}` : 'Choisis une option';
+  confirmBtn.textContent = allGroupsChosen ? `Ajouter · ${formatMoney(priceCents, currency)}` : 'Choisis une option';
 }
 
 async function load() {
@@ -139,6 +140,7 @@ async function load() {
       apiFetch(`/restaurants/${restaurantId}/menu`),
     ]);
 
+    currency = restaurant.currency ?? 'EUR';
     document.title = `${restaurant.name} — Saveurs`;
     document.getElementById('restaurant-header').innerHTML = `
       <h1 class="title" style="margin-bottom:4px;">${escapeHtml(restaurant.name)}</h1>
@@ -183,7 +185,7 @@ async function load() {
           name: itemRow.querySelector('.iname').textContent,
           priceCents: Number(confirmBtn.dataset.basePrice) + selected.reduce((s, o) => s + o.priceDeltaCents, 0),
           options: selected,
-        });
+        }, currency);
         renderCartBar();
         panel.hidden = true;
 
@@ -204,7 +206,7 @@ async function load() {
         menuItemId: Number(btn.dataset.itemId),
         name: btn.dataset.name,
         priceCents: Number(btn.dataset.price),
-      });
+      }, currency);
       renderCartBar();
     });
 
