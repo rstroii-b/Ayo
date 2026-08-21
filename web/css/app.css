@@ -117,7 +117,11 @@ body{
 }
 .search input::placeholder{color:var(--ink-dim);}
 
-.chiprow{display:flex;gap:8px;overflow-x:auto;padding-bottom:20px;margin:0 -20px;padding-inline:20px;}
+.chiprow{
+  display:flex;gap:8px;overflow-x:auto;padding-bottom:20px;margin:0 -20px;padding-inline:20px;
+  mask-image:linear-gradient(to right,transparent,#000 20px,#000 calc(100% - 20px),transparent);
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 20px,#000 calc(100% - 20px),transparent);
+}
 .chip{
   flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--line);
   font-size:13px;font-weight:600;color:var(--ink-dim);background:var(--surface);
