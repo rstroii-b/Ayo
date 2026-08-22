@@ -6,14 +6,9 @@ import { formatMoney, escapeHtml } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
 
 // Pas de géocodage d'adresse texte→coordonnées dans ce squelette — la position réelle de
-// l'appareil sert de point de livraison (repli Paris si refusée/indisponible). Le libellé
+// l'appareil sert de point de livraison (repli Abidjan si refusée/indisponible). Le libellé
 // d'adresse saisi par le client reste ce qui s'affiche au restaurant/livreur.
-const FALLBACK_POSITION = { lat: 48.8566, lng: 2.3522 };
-
-let phase = 'review'; // 'review' -> 'paying'
-let orderId = null;
-let stripe = null;
-let elements = null;
+const FALLBACK_POSITION = { lat: 5.3600, lng: -4.0083 };
 
 function renderCart() {
   const cart = getCart();
@@ -39,12 +34,12 @@ function renderCart() {
       <div class="cline-info">
         <div class="cline-name">${escapeHtml(line.name)}</div>
         ${line.options?.length ? `<span class="state-msg">${escapeHtml(line.options.map((o) => o.name).join(', '))}</span>` : ''}
-        <span class="price">${formatMoney(line.priceCents * line.quantity, cart.currency)}</span>
+        <span class="price">${formatMoney(line.priceCents * line.quantity)}</span>
       </div>
     </div>
   `).join('');
 
-  document.getElementById('sum-subtotal').textContent = formatMoney(cartSubtotalCents(cart), cart.currency);
+  document.getElementById('sum-subtotal').textContent = formatMoney(cartSubtotalCents(cart));
 }
 
 document.getElementById('cart-lines').addEventListener('click', (event) => {
@@ -92,27 +87,12 @@ async function startCheckout() {
         delivery_address: { lat: position.lat, lng: position.lng, label: address },
       },
     });
-    orderId = order.order_id;
+    const intent = await apiFetch('/payments/intent', { method: 'POST', body: { order_id: order.order_id } });
 
-    const intent = await apiFetch('/payments/intent', { method: 'POST', body: { order_id: orderId } });
-
-    if (cart.currency === 'XOF') {
-      // Paiement mobile money CinetPay : la commande existe déjà côté serveur, on part sur
-      // la page de paiement hébergée et le webhook confirme le paiement de son côté.
-      clearCart();
-      window.location.href = intent.payment_url;
-
-      return;
-    }
-
-    stripe = Stripe(intent.publishable_key);
-    elements = stripe.elements({ clientSecret: intent.client_secret });
-    elements.create('payment').mount('#payment-element');
-
-    document.getElementById('payment-step').hidden = false;
-    phase = 'paying';
-    btn.textContent = 'Payer maintenant';
-    btn.disabled = false;
+    // Paiement mobile money CinetPay : la commande existe déjà côté serveur, on part sur
+    // la page de paiement hébergée et le webhook confirme le paiement de son côté.
+    clearCart();
+    window.location.href = intent.payment_url;
   } catch (error) {
     if (error.status === 401) {
       errorEl.textContent = 'Ta session a expiré — reconnecte-toi pour continuer.';
@@ -131,40 +111,7 @@ async function startCheckout() {
   }
 }
 
-async function confirmPayment() {
-  const errorEl = document.getElementById('checkout-error');
-  const btn = document.getElementById('checkout-btn');
-  errorEl.hidden = true;
-  btn.disabled = true;
-  btn.textContent = 'Paiement en cours…';
-
-  const { error, paymentIntent } = await stripe.confirmPayment({
-    elements,
-    redirect: 'if_required',
-  });
-
-  if (error) {
-    errorEl.textContent = error.message;
-    errorEl.hidden = false;
-    btn.disabled = false;
-    btn.textContent = 'Payer maintenant';
-
-    return;
-  }
-
-  if (paymentIntent.status === 'succeeded') {
-    clearCart();
-    window.location.href = `/suivi.html?order=${orderId}`;
-  }
-}
-
-document.getElementById('checkout-btn').addEventListener('click', () => {
-  if (phase === 'review') {
-    startCheckout();
-  } else {
-    confirmPayment();
-  }
-});
+document.getElementById('checkout-btn').addEventListener('click', startCheckout);
 
 if (getAddress()) {
   document.getElementById('address').value = getAddress();

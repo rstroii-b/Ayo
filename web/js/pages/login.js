@@ -1,7 +1,7 @@
 import { login } from '../auth.js';
 import { webauthnSupported, loginWithPasskey } from '../webauthn.js';
 
-const ROLE_HOME = { restaurant_owner: '/backoffice.html', driver: '/driver.html' };
+const ROLE_HOME = { restaurant_owner: '/backoffice.html', driver: '/driver.html', admin: '/admin.html' };
 
 function redirectAfterLogin(role) {
   const params = new URLSearchParams(window.location.search);

@@ -4,8 +4,6 @@ import { formatMoney, escapeHtml } from '../format.js';
 import { realtimeClient } from '../realtime.js';
 import { getCurrentPosition } from '../geolocation.js';
 
-let currency = 'EUR';
-
 if (requireLogin('/backoffice.html')) {
   init();
 }
@@ -18,9 +16,8 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 async function init() {
   try {
     const restaurant = await apiFetch('/restaurant/mine');
-    currency = restaurant.currency ?? 'EUR';
     document.getElementById('restaurant-name-foot').textContent = restaurant.name;
-    renderStripeStatus(restaurant);
+    renderMobileMoneyStatus();
     document.getElementById('board').hidden = false;
     loadBoard();
 
@@ -77,19 +74,39 @@ function wireSetupForm() {
   });
 }
 
-function renderStripeStatus(restaurant) {
-  const el = document.getElementById('stripe-status');
+async function renderMobileMoneyStatus() {
+  const el = document.getElementById('mobile-money-status');
+  const status = await apiFetch('/connect/status');
 
-  if (restaurant.stripe_connected) {
-    el.innerHTML = '<span class="pill ok">Paiements activés</span>';
+  el.innerHTML = `
+    <div class="cart-block" style="padding:14px 16px;margin:0 0 18px;max-width:420px;">
+      <p style="margin:0 0 10px;font-size:13.5px;">
+        ${status.mobile_money_configured ? 'Compte mobile money enregistré.' : 'Renseigne le compte mobile money du commerce pour recevoir tes reversements.'}
+      </p>
+      <div class="field"><label for="mm-operator">Opérateur</label>
+        <input id="mm-operator" placeholder="ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI" value="${escapeHtml(status.mobile_money_operator ?? '')}"></div>
+      <div class="field"><label for="mm-number">Numéro</label>
+        <input id="mm-number" placeholder="+2250700000000" value="${escapeHtml(status.mobile_money_number ?? '')}"></div>
+      <button class="btn btn-primary" id="mm-save-btn" type="button">Enregistrer</button>
+      <p class="state-msg" id="mm-status" style="margin:8px 0 0;"></p>
+    </div>
+  `;
 
-    return;
-  }
+  document.getElementById('mm-save-btn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('mm-status');
 
-  el.innerHTML = '<button class="btn btn-primary" id="onboard-btn" type="button">Activer les paiements Stripe</button>';
-  document.getElementById('onboard-btn').addEventListener('click', async () => {
-    const { onboarding_url } = await apiFetch('/connect/onboard', { method: 'POST', body: {} });
-    window.open(onboarding_url, '_blank');
+    try {
+      await apiFetch('/connect/mobile-money', {
+        method: 'PATCH',
+        body: {
+          operator: document.getElementById('mm-operator').value.trim(),
+          phone_number: document.getElementById('mm-number').value.trim(),
+        },
+      });
+      statusEl.textContent = 'Enregistré.';
+    } catch (error) {
+      statusEl.textContent = error.detail ?? error.message;
+    }
   });
 }
 
@@ -131,7 +148,7 @@ function orderCardHtml(order, columnKey) {
       <div class="client">${escapeHtml(order.client_first_name)}</div>
       <div class="items">${escapeHtml(order.items_summary)}</div>
       ${order.note_livreur ? `<div class="note">"${escapeHtml(order.note_livreur)}"</div>` : ''}
-      <span class="total">${formatMoney(order.total_cents, currency)}</span>
+      <span class="total">${formatMoney(order.total_cents)}</span>
       ${actions}
     </div>
   `;

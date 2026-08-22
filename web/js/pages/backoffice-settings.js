@@ -31,26 +31,9 @@ async function init() {
 }
 
 async function renderPayoutStatus() {
-  const el = document.getElementById('stripe-status');
+  const el = document.getElementById('mobile-money-status');
   const status = await apiFetch('/connect/status');
-
-  if (status.currency === 'XOF') {
-    renderMobileMoneyForm(el, status);
-
-    return;
-  }
-
-  if (status.payouts_enabled) {
-    el.innerHTML = '<span class="pill ok">Paiements activés</span>';
-
-    return;
-  }
-
-  el.innerHTML = '<button class="btn btn-primary" id="onboard-btn" type="button">Activer les paiements Stripe</button>';
-  document.getElementById('onboard-btn').addEventListener('click', async () => {
-    const { onboarding_url } = await apiFetch('/connect/onboard', { method: 'POST', body: {} });
-    window.open(onboarding_url, '_blank');
-  });
+  renderMobileMoneyForm(el, status);
 }
 
 function renderMobileMoneyForm(el, status) {

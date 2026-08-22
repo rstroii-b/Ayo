@@ -3,7 +3,7 @@ import { register } from '../auth.js';
 let selectedRole = 'client';
 
 function updateVisibleFields() {
-  document.getElementById('siret-field').hidden = selectedRole !== 'driver';
+  document.getElementById('rccm-field').hidden = selectedRole !== 'driver';
   document.getElementById('vehicule-field').hidden = selectedRole !== 'driver';
 }
 
@@ -33,7 +33,7 @@ document.getElementById('register-form').addEventListener('submit', async (event
   };
 
   if (selectedRole === 'driver') {
-    payload.siret = form.get('siret');
+    payload.rccm = form.get('rccm');
     payload.vehicule_type = form.get('vehicule_type');
   }
 

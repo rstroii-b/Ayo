@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Saveurs\Controllers\AdminController;
 use Saveurs\Controllers\AuthController;
 use Saveurs\Controllers\ConnectController;
 use Saveurs\Controllers\DriverController;
@@ -90,18 +91,23 @@ $app->group('/api/v1', function ($group) use ($auth) {
         ->add($auth('restaurant_owner'));
 
     // App livreur
+    $group->get('/driver/me', [DriverController::class, 'me'])->add($auth('driver'));
+    $group->post('/driver/kyc-document', [DriverController::class, 'uploadKycDocument'])->add($auth('driver'));
     $group->get('/driver/orders/available', [OrderController::class, 'availableForDriver'])->add($auth('driver'));
     $group->get('/driver/orders/active', [OrderController::class, 'activeForDriver'])->add($auth('driver'));
     $group->patch('/driver/status', [DriverController::class, 'updateStatus'])->add($auth('driver'));
     $group->post('/driver/location', [DriverController::class, 'updateLocation'])->add($auth('driver'));
 
-    // Paiement — Stripe Connect (voir §5)
+    // Admin — revue KYC des livreurs
+    $group->get('/admin/drivers', [AdminController::class, 'listDriversForKyc'])->add($auth('admin'));
+    $group->get('/admin/drivers/{id}/kyc-document', [AdminController::class, 'kycDocument'])->add($auth('admin'));
+    $group->patch('/admin/drivers/{id}/kyc', [AdminController::class, 'decideKyc'])->add($auth('admin'));
+
+    // Paiement — CinetPay (mobile money, voir §5)
     $group->post('/payments/intent', [PaymentController::class, 'createIntent'])->add($auth('client'));
-    $group->post('/webhooks/stripe', [PaymentController::class, 'webhook']);
     $group->post('/webhooks/cinetpay', [PaymentController::class, 'cinetpayWebhook']);
 
-    // Onboarding Stripe Connect — restaurateur ou livreur
-    $group->post('/connect/onboard', [ConnectController::class, 'onboard'])->add($auth());
+    // Compte mobile money — restaurateur ou livreur
     $group->get('/connect/status', [ConnectController::class, 'status'])->add($auth());
     $group->patch('/connect/mobile-money', [ConnectController::class, 'updateMobileMoney'])->add($auth());
 

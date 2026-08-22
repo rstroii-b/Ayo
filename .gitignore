@@ -1,3 +1,4 @@
 api/vendor/
 api/.env
+api/storage/
 *.log

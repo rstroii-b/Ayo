@@ -2,9 +2,9 @@ import { apiFetch } from '../api.js';
 import { escapeHtml, formatMoney, safeImageUrl } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
 
-// Position par défaut si la géolocalisation est refusée/indisponible (Paris) — sert de repli,
+// Position par défaut si la géolocalisation est refusée/indisponible (Abidjan) — sert de repli,
 // plus la position réelle pour trier par distance et estimer frais/délai de livraison.
-const FALLBACK_POSITION = { lat: 48.8566, lng: 2.3522 };
+const FALLBACK_POSITION = { lat: 5.3600, lng: -4.0083 };
 let userPosition = null;
 
 const CATEGORY_COPY = {
@@ -25,7 +25,7 @@ function restaurantCardHtml(restaurant, isFeatured) {
       <div class="rinfo">
         <div class="rtoprow">
           <div class="rname">${escapeHtml(restaurant.name)}</div>
-          ${hasEstimate ? `<span class="rfee">${formatMoney(restaurant.delivery_fee_cents, restaurant.currency)}</span>` : ''}
+          ${hasEstimate ? `<span class="rfee">${formatMoney(restaurant.delivery_fee_cents)}</span>` : ''}
         </div>
         ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
         <div class="rmetarow">

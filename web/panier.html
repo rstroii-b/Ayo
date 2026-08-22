@@ -33,7 +33,7 @@
     <div class="cart-block">
       <div class="field" style="padding:10px 0;">
         <label for="address">Adresse de livraison</label>
-        <input id="address" placeholder="12 rue de Paris, 75011 Paris" required>
+        <input id="address" placeholder="Rue des Jardins, Cocody, Abidjan" required>
       </div>
     </div>
 
@@ -42,17 +42,12 @@
       <p class="state-msg" style="padding:0 4px;">Frais de livraison et TVA calculés à l'étape suivante.</p>
     </div>
 
-    <div id="payment-step" hidden>
-      <div id="payment-element"></div>
-    </div>
-
     <div class="sticky-bar">
       <button class="btn btn-primary btn-block" id="checkout-btn" type="button">Commander</button>
       <p class="error-msg" id="checkout-error" hidden></p>
     </div>
   </div>
 
-  <script src="https://js.stripe.com/v3/"></script>
   <script type="module" src="./js/pages/panier.js"></script>
 </body>
 </html>

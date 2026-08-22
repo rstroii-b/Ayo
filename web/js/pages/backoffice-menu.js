@@ -3,7 +3,6 @@ import { requireLogin, logout } from '../auth.js';
 import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
 
 let restaurantId = null;
-let currency = 'EUR';
 
 if (requireLogin('/backoffice-menu.html')) {
   init();
@@ -18,7 +17,6 @@ async function init() {
   try {
     const restaurant = await apiFetch('/restaurant/mine');
     restaurantId = restaurant.id;
-    currency = restaurant.currency ?? 'EUR';
     document.getElementById('restaurant-name-foot').textContent = restaurant.name;
     await loadMenu();
   } catch (error) {
@@ -36,7 +34,7 @@ function variantsPanelHtml(item) {
       <div class="mname" style="flex:1;font-weight:600;font-size:12.5px;">
         ${escapeHtml(o.name)}${o.option_group ? `<div class="d">${escapeHtml(o.option_group)}</div>` : ''}
       </div>
-      <div class="mprice" style="font-size:12px;">${o.price_delta_cents ? formatMoney(o.price_delta_cents, currency) : '—'}</div>
+      <div class="mprice" style="font-size:12px;">${o.price_delta_cents ? formatMoney(o.price_delta_cents) : '—'}</div>
       <div class="mtoggle" style="font-size:12px;">${o.stock_quantity === null ? 'Stock illimité' : `Stock : ${o.stock_quantity}`}</div>
       <button class="btn btn-ghost" type="button" data-delete-option-id="${o.id}" data-item-id="${item.id}" style="padding:5px 9px;font-size:11px;">Retirer</button>
     </div>
@@ -67,7 +65,7 @@ function categoryTableHtml(category) {
         ? `<img src="${escapeHtml(photoUrl)}" alt="" style="width:38px;height:38px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
         : '<div style="width:38px;height:38px;border-radius:8px;background:var(--surface-alt);flex-shrink:0;"></div>'}
       <div class="mname">${escapeHtml(item.name)}${item.description ? `<div class="d">${escapeHtml(item.description)}</div>` : ''}</div>
-      <div class="mprice">${formatMoney(item.price_cents, currency)}</div>
+      <div class="mprice">${formatMoney(item.price_cents)}</div>
       <div class="mtoggle">
         <button class="sw ${item.is_available ? 'on' : 'off'}" data-item-id="${item.id}" data-available="${item.is_available ? 1 : 0}" aria-label="Disponibilité de ${escapeHtml(item.name)}"></button>
         ${item.is_available ? 'Actif' : 'Épuisé'}

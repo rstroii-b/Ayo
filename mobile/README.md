@@ -70,7 +70,7 @@ par densité ; iOS : `resources/icon.png` en 1024×1024 copié directement dans
 - [ ] Captures d'écran par taille d'appareil exigée
 - [ ] Description, mots-clés, catégorie
 - [ ] Politique de confidentialité publique — déjà en place : `https://ayo.jobivoire.com/privacy.html`
-- [ ] Compiler avec les vraies clés Stripe si passage en production réelle
+- [ ] Compiler avec les vraies clés CinetPay si passage en production réelle
 - [ ] Notifications push natives (APNs/FCM) — le Web Push actuel fonctionne dans la WebView
       Capacitor, mais des notifications 100% natives (icône, badge sur l'icône d'app) demandent
       le plugin `@capacitor/push-notifications` — pas encore ajouté

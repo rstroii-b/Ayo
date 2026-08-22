@@ -1,6 +1,6 @@
-import { apiFetch } from '../api.js';
+import { apiFetch, apiFetchFile } from '../api.js';
 import { requireLogin, logout, currentUser } from '../auth.js';
-import { formatEuros, escapeHtml } from '../format.js';
+import { formatMoney, escapeHtml } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
 import { realtimeClient } from '../realtime.js';
 
@@ -29,7 +29,8 @@ if (requireLogin('/driver.html')) {
 }
 
 async function init() {
-  checkStripeStatus();
+  loadKycStatus();
+  loadMobileMoneyStatus();
   await refresh();
 
   // Temps réel (Pusher) — la liste des courses disponibles se met à jour dès qu'une commande
@@ -84,28 +85,72 @@ function toggleOnline() {
   }
 }
 
-async function checkStripeStatus() {
-  const status = await apiFetch('/connect/status');
-  const banner = document.getElementById('stripe-banner');
+async function loadKycStatus() {
+  const driver = await apiFetch('/driver/me');
+  renderKycBanner(document.getElementById('kyc-banner'), driver);
+}
 
-  if (status.currency === 'XOF') {
-    renderMobileMoneyBanner(banner, status);
+function renderKycBanner(banner, driver) {
+  if (driver.kyc_status === 'verified') {
+    banner.innerHTML = `
+      <div class="cart-block" style="padding:14px 16px;margin:0 0 16px;">
+        <span class="pill ok">Identité vérifiée</span>
+      </div>
+    `;
 
     return;
   }
 
-  if (!status.payouts_enabled) {
+  if (driver.kyc_status === 'pending' && driver.has_kyc_document) {
     banner.innerHTML = `
       <div class="cart-block" style="padding:14px 16px;margin:0 0 16px;">
-        <p style="margin:0 0 10px;font-size:13.5px;">Active tes paiements pour recevoir tes gains de livraison.</p>
-        <button class="btn btn-primary" id="onboard-btn" type="button">Activer les paiements Stripe</button>
+        <p style="margin:0;font-size:13.5px;">Pièce d'identité envoyée — vérification en cours.</p>
       </div>
     `;
-    document.getElementById('onboard-btn').addEventListener('click', async () => {
-      const { onboarding_url } = await apiFetch('/connect/onboard', { method: 'POST', body: {} });
-      window.open(onboarding_url, '_blank');
-    });
+
+    return;
   }
+
+  const rejectedNote = driver.kyc_status === 'rejected'
+    ? `<p class="error-msg" style="margin:0 0 10px;">Document refusé${driver.kyc_rejection_reason ? ` — ${escapeHtml(driver.kyc_rejection_reason)}` : ''}. Envoie une nouvelle pièce.</p>`
+    : '';
+
+  banner.innerHTML = `
+    <div class="cart-block" style="padding:14px 16px;margin:0 0 16px;">
+      ${rejectedNote}
+      <p style="margin:0 0 10px;font-size:13.5px;">Envoie une pièce d'identité (JPEG, PNG ou PDF, 8 Mo max) pour activer ton compte livreur.</p>
+      <input type="file" id="kyc-file" accept="image/jpeg,image/png,application/pdf">
+      <button class="btn btn-primary" id="kyc-upload-btn" type="button" style="margin-top:8px;">Envoyer</button>
+      <p class="state-msg" id="kyc-upload-status" style="margin:8px 0 0;"></p>
+    </div>
+  `;
+
+  document.getElementById('kyc-upload-btn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('kyc-file');
+    const statusEl = document.getElementById('kyc-upload-status');
+
+    if (!fileInput.files[0]) {
+      statusEl.textContent = 'Choisis un fichier.';
+
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('document', fileInput.files[0]);
+
+    try {
+      await apiFetchFile('/driver/kyc-document', formData);
+      loadKycStatus();
+    } catch (error) {
+      statusEl.textContent = error.detail ?? error.message;
+    }
+  });
+}
+
+async function loadMobileMoneyStatus() {
+  const status = await apiFetch('/connect/status');
+  const banner = document.getElementById('mobile-money-banner');
+  renderMobileMoneyBanner(banner, status);
 }
 
 function renderMobileMoneyBanner(banner, status) {
@@ -151,7 +196,7 @@ function activeOrderHtml(order) {
       <div class="sumrow"><span>Livrer à</span><span></span></div>
       <p style="padding:0 4px 10px;font-size:13.5px;font-weight:600;">${escapeHtml(order.adresse_livraison)}</p>
       ${order.note_livreur ? `<p class="state-msg" style="padding:0 4px 10px;">"${escapeHtml(order.note_livreur)}"</p>` : ''}
-      <div class="sumrow total"><span>Ta part</span><span>${formatEuros(order.delivery_fee_cents)}</span></div>
+      <div class="sumrow total"><span>Ta part</span><span>${formatMoney(order.delivery_fee_cents)}</span></div>
     </div>
     ${next ? `<button class="btn btn-primary btn-block" data-action="${next.action}" data-id="${order.id}" style="margin:0 20px;width:calc(100% - 40px);">${next.label}</button>` : ''}
   `;
@@ -162,7 +207,7 @@ function availableOrderHtml(order) {
     <div class="cart-block">
       <p class="sechead" style="margin:14px 0 4px;">${escapeHtml(order.restaurant_name)}</p>
       <p class="state-msg" style="padding:0 0 10px;">${escapeHtml(order.restaurant_adresse)} → ${escapeHtml(order.adresse_livraison)}</p>
-      <div class="sumrow"><span>Frais de livraison</span><span>${formatEuros(order.delivery_fee_cents)}</span></div>
+      <div class="sumrow"><span>Frais de livraison</span><span>${formatMoney(order.delivery_fee_cents)}</span></div>
       <div class="sumrow"><span>Plats</span><span></span></div>
       <p class="state-msg" style="padding:0 4px 10px;">${escapeHtml(order.items_summary)}</p>
     </div>

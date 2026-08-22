@@ -23,16 +23,16 @@ CREATE TABLE users (
 
 CREATE TABLE driver_profiles (
   user_id           BIGINT UNSIGNED PRIMARY KEY,
-  siret             VARCHAR(32) NULL, -- SIRET (France) ou identifiant pro équivalent selon le pays ; facultatif hors France (voir CGU §2)
-  statut_juridique  ENUM('auto_entrepreneur','entreprise_individuelle') NOT NULL DEFAULT 'auto_entrepreneur',
-  stripe_account_id VARCHAR(64) NULL,
-  mobile_money_operator VARCHAR(20) NULL, -- ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI (zone XOF)
+  rccm              VARCHAR(32) NULL, -- numéro RCCM (registre du commerce ivoirien) ; facultatif (voir CGU §2)
+  mobile_money_operator VARCHAR(20) NULL, -- ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI
   mobile_money_number   VARCHAR(20) NULL, -- format E.164
   vehicule_type     ENUM('velo','scooter','voiture') NOT NULL DEFAULT 'velo',
   zone_id           BIGINT UNSIGNED NULL,
   is_online         TINYINT(1) NOT NULL DEFAULT 0,
   rating_avg        DECIMAL(2,1) NOT NULL DEFAULT 5.0,
   kyc_status        ENUM('pending','verified','rejected') NOT NULL DEFAULT 'pending',
+  kyc_document_path VARCHAR(255) NULL, -- nom de fichier stocké dans api/storage/kyc/, jamais une URL publique
+  kyc_rejection_reason VARCHAR(255) NULL, -- motif renvoyé au livreur en cas de rejet
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_driver_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -46,7 +46,7 @@ CREATE TABLE delivery_zones (
   name              VARCHAR(120) NOT NULL,
   ville             VARCHAR(120) NOT NULL,
   polygon_geojson   JSON NULL,
-  currency          CHAR(3) NOT NULL DEFAULT 'EUR', -- ISO 4217 ; XOF (Franc CFA) n'a pas de sous-unité utilisée en pratique
+  currency          CHAR(3) NOT NULL DEFAULT 'XOF', -- ISO 4217 ; XOF (Franc CFA) n'a pas de sous-unité utilisée en pratique
   base_fee_cents    INT UNSIGNED NOT NULL DEFAULT 150,
   price_per_km_cents INT UNSIGNED NOT NULL DEFAULT 40,
   min_fee_cents     INT UNSIGNED NOT NULL DEFAULT 190,
@@ -67,15 +67,13 @@ CREATE TABLE restaurants (
   zone_id           BIGINT UNSIGNED NULL,
   name              VARCHAR(150) NOT NULL,
   slug              VARCHAR(160) NOT NULL,
-  siret             VARCHAR(14) NOT NULL,
-  tva_regime        ENUM('mandataire','commissionnaire') NOT NULL DEFAULT 'mandataire',
+  rccm              VARCHAR(32) NULL,        -- numéro RCCM (registre du commerce ivoirien) ; facultatif
   adresse           VARCHAR(255) NOT NULL,
   lat               DECIMAL(10,7) NOT NULL,
   lng               DECIMAL(10,7) NOT NULL,
   cuisine_origine   VARCHAR(80) NULL,        -- ex: 'Sénégal', 'Côte d'Ivoire'
   photo_url         VARCHAR(255) NULL,       -- bannière affichée sur la fiche et la carte d'accueil
-  stripe_account_id VARCHAR(64) NULL,        -- compte Stripe Connect Express du restaurant
-  mobile_money_operator VARCHAR(20) NULL,    -- ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI (zone XOF)
+  mobile_money_operator VARCHAR(20) NULL,    -- ex: OM_CI, MTN_CI, MOOV_CI, WAVE_CI
   mobile_money_number   VARCHAR(20) NULL,    -- format E.164
   commission_pct    DECIMAL(4,2) NOT NULL DEFAULT 20.00,
   business_type     ENUM('food','fashion','furniture','grocery') NOT NULL DEFAULT 'food',
@@ -107,7 +105,7 @@ CREATE TABLE menu_items (
   description       VARCHAR(500) NULL,
   ingredients       TEXT NULL,               -- liste libre (ex: "Riz, poisson, tomate, oignon") ; affichée dans la fiche produit, pas de sens hors alimentaire
   price_cents       INT UNSIGNED NOT NULL,
-  vat_rate          DECIMAL(4,2) NOT NULL DEFAULT 10.00, -- restauration 10% par défaut ; à ajuster par article pour mode/meubles/épicerie
+  vat_rate          DECIMAL(4,2) NOT NULL DEFAULT 18.00, -- taux normal CI (18%) par défaut ; à ajuster par article si un taux réduit s'applique
   photo_url         VARCHAR(255) NULL,
   is_available      TINYINT(1) NOT NULL DEFAULT 1,
   allergenes        VARCHAR(255) NULL,
@@ -145,8 +143,7 @@ CREATE TABLE orders (
   delivery_fee_cents  INT UNSIGNED NOT NULL,
   tva_cents           INT UNSIGNED NOT NULL,
   total_cents         INT UNSIGNED NOT NULL,
-  payment_intent_id   VARCHAR(64) NULL,     -- id Stripe (EUR) ou merchant_transaction_id CinetPay (XOF)
-  stripe_charge_id    VARCHAR(64) NULL,     -- pour rattacher les Transfer à la charge d'origine (source_transaction)
+  payment_intent_id   VARCHAR(64) NULL,     -- merchant_transaction_id CinetPay
   cinetpay_notify_token VARCHAR(255) NULL,  -- pour vérifier l'authenticité du webhook CinetPay
   cinetpay_payment_url VARCHAR(500) NULL,   -- pour renvoyer le même lien de paiement si le client recharge la page
   idempotency_key     VARCHAR(80) NOT NULL,
@@ -184,7 +181,7 @@ CREATE TABLE order_events (
   id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_id          BIGINT UNSIGNED NOT NULL,
   status            VARCHAR(30) NOT NULL,
-  actor_type        ENUM('client','restaurant','driver','system') NOT NULL,
+  actor_type        ENUM('client','restaurant','driver','admin','system') NOT NULL,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ix_orderevents_order (order_id),
   CONSTRAINT fk_orderevent_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
@@ -202,7 +199,7 @@ CREATE TABLE driver_locations (
   CONSTRAINT fk_driverloc_user FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Reversements Stripe Connect (deux lignes par commande livrée : restaurant + livreur).
+-- Reversements (deux lignes par commande livrée : restaurant + livreur), via CinetPay.
 CREATE TABLE payouts (
   id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_id          BIGINT UNSIGNED NOT NULL,
@@ -211,8 +208,7 @@ CREATE TABLE payouts (
   restaurant_id     BIGINT UNSIGNED NULL,
   amount_cents      INT UNSIGNED NOT NULL,
   statut            ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
-  stripe_transfer_id VARCHAR(64) NULL,
-  cinetpay_transfer_id  VARCHAR(64) NULL,  -- merchant_transaction_id qu'on a généré (zone XOF)
+  cinetpay_transfer_id  VARCHAR(64) NULL,  -- merchant_transaction_id qu'on a généré
   cinetpay_notify_token VARCHAR(255) NULL, -- pour vérifier l'authenticité du webhook de virement
   failure_reason    VARCHAR(255) NULL,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -272,10 +268,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- Données de démonstration minimales
 -- ---------------------------------------------------------------
 
-INSERT INTO delivery_zones (id, name, ville, currency, base_fee_cents, price_per_km_cents, min_fee_cents)
-VALUES (1, 'Paris intra-muros', 'Paris', 'EUR', 150, 40, 190);
-
--- Zone Abidjan — fondation pour un futur lancement Côte d'Ivoire (voir le sujet paiement mobile
--- money, distinct de Stripe, à traiter séparément). Tarifs de départ approximatifs, à ajuster.
+-- Tarifs de départ approximatifs, à ajuster. id=2 conservé pour rester aligné avec la zone
+-- Abidjan déjà en place sur la base de prod (voir mémoire de déploiement).
 INSERT INTO delivery_zones (id, name, ville, currency, base_fee_cents, price_per_km_cents, min_fee_cents)
 VALUES (2, 'Abidjan', 'Abidjan', 'XOF', 50000, 15000, 100000);

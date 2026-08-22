@@ -2,7 +2,6 @@ import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { formatMoney, escapeHtml } from '../format.js';
 
-let currency = 'EUR';
 
 if (requireLogin('/backoffice-stats.html')) {
   init();
@@ -16,7 +15,6 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 async function init() {
   try {
     const restaurant = await apiFetch('/restaurant/mine');
-    currency = restaurant.currency ?? 'EUR';
     document.getElementById('restaurant-name-foot').textContent = restaurant.name;
     await loadStats();
   } catch (error) {
@@ -78,14 +76,14 @@ async function loadStats() {
     <div class="statgrid">
       ${statCardHtml({
         label: 'Ventes aujourd\'hui',
-        value: formatMoney(stats.revenue_today_cents, currency),
+        value: formatMoney(stats.revenue_today_cents),
         sub: `${stats.orders_today} commande${stats.orders_today > 1 ? 's' : ''} livrée${stats.orders_today > 1 ? 's' : ''}`,
         glow: true,
         extra: sparklineHtml(stats.daily_revenue),
       })}
       ${statCardHtml({
         label: 'Ventes sur 7 jours',
-        value: formatMoney(stats.revenue_week_cents, currency),
+        value: formatMoney(stats.revenue_week_cents),
         sub: `${stats.orders_week} commande${stats.orders_week > 1 ? 's' : ''} livrée${stats.orders_week > 1 ? 's' : ''}`,
       })}
       ${statCardHtml({

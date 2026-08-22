@@ -46,22 +46,22 @@ INSERT INTO users (id, email, phone, password_hash, first_name, last_name, role)
 (7, 'ayomeubles@example.com','+2250701020310', @pwd, 'Serge',  'Aka',      'restaurant_owner'),
 (8, 'ayomarche@example.com','+2250701020311', @pwd, 'Mariam', 'Bamba',    'restaurant_owner');
 
-INSERT INTO driver_profiles (user_id, statut_juridique, mobile_money_operator, mobile_money_number, vehicule_type, zone_id, is_online, kyc_status)
-VALUES (2, 'auto_entrepreneur', 'WAVE_CI', '+2250701020305', 'scooter', 2, 1, 'verified');
+INSERT INTO driver_profiles (user_id, mobile_money_operator, mobile_money_number, vehicule_type, zone_id, is_online, kyc_status)
+VALUES (2, 'WAVE_CI', '+2250701020305', 'scooter', 2, 1, 'verified');
 
 -- ---------------------------------------------------------------
 -- Commerces (zone_id 2 = Abidjan / XOF)
 -- ---------------------------------------------------------------
 
 INSERT INTO restaurants
-  (id, owner_id, zone_id, name, slug, siret, adresse, lat, lng, cuisine_origine, photo_url, business_type, delivery_mode, commission_pct)
+  (id, owner_id, zone_id, name, slug, rccm, adresse, lat, lng, cuisine_origine, photo_url, business_type, delivery_mode, commission_pct)
 VALUES
-(1, 3, 2, 'Chez Ayo',        'chez-ayo',        '11100000000001', 'Rue des Jardins, Cocody, Abidjan',    5.3600, -3.9800, 'Côte d''Ivoire', '/assets/shops/banner-chez-ayo.jpg',        'food',      'instant',   20.00),
-(2, 4, 2, 'Babi Bouffe',     'babi-bouffe',     '11100000000002', 'Boulevard Giscard d''Estaing, Marcory, Abidjan', 5.2926, -3.9836, 'Côte d''Ivoire', '/assets/shops/banner-babi-bouffe.jpg',     'food',      'instant',   20.00),
-(3, 5, 2, 'Maquis d''Abidjan','maquis-abidjan', '11100000000003', 'Rue Princesse, Yopougon, Abidjan',    5.3450, -4.0850, 'Sénégal',       '/assets/shops/banner-maquis-abidjan.jpg',  'food',      'instant',   20.00),
-(4, 6, 2, 'Ayo Mode',        'ayo-mode',        '11100000000004', 'Avenue Chardy, Plateau, Abidjan',     5.3197, -4.0242, NULL,            '/assets/shops/banner-fashion.jpg',         'fashion',   'instant',   15.00),
-(5, 7, 2, 'Ayo Meubles',     'ayo-meubles',     '11100000000005', 'Boulevard Latrille, Cocody, Abidjan', 5.3690, -3.9950, NULL,            '/assets/shops/banner-furniture.jpg',       'furniture', 'scheduled', 12.00),
-(6, 8, 2, 'Ayo Marché',      'ayo-marche',      '11100000000006', 'Rue 12, Treichville, Abidjan',        5.2896, -4.0074, NULL,            '/assets/shops/banner-grocery.jpg',         'grocery',   'instant',   12.00);
+(1, 3, 2, 'Chez Ayo',        'chez-ayo',        NULL, 'Rue des Jardins, Cocody, Abidjan',    5.3600, -3.9800, 'Côte d''Ivoire', '/assets/shops/banner-chez-ayo.jpg',        'food',      'instant',   20.00),
+(2, 4, 2, 'Babi Bouffe',     'babi-bouffe',     NULL, 'Boulevard Giscard d''Estaing, Marcory, Abidjan', 5.2926, -3.9836, 'Côte d''Ivoire', '/assets/shops/banner-babi-bouffe.jpg',     'food',      'instant',   20.00),
+(3, 5, 2, 'Maquis d''Abidjan','maquis-abidjan', NULL, 'Rue Princesse, Yopougon, Abidjan',    5.3450, -4.0850, 'Sénégal',       '/assets/shops/banner-maquis-abidjan.jpg',  'food',      'instant',   20.00),
+(4, 6, 2, 'Ayo Mode',        'ayo-mode',        NULL, 'Avenue Chardy, Plateau, Abidjan',     5.3197, -4.0242, NULL,            '/assets/shops/banner-fashion.jpg',         'fashion',   'instant',   15.00),
+(5, 7, 2, 'Ayo Meubles',     'ayo-meubles',     NULL, 'Boulevard Latrille, Cocody, Abidjan', 5.3690, -3.9950, NULL,            '/assets/shops/banner-furniture.jpg',       'furniture', 'scheduled', 12.00),
+(6, 8, 2, 'Ayo Marché',      'ayo-marche',      NULL, 'Rue 12, Treichville, Abidjan',        5.2896, -4.0074, NULL,            '/assets/shops/banner-grocery.jpg',         'grocery',   'instant',   12.00);
 
 -- ---------------------------------------------------------------
 -- Catégories

@@ -17,12 +17,12 @@ final class RestaurantController
     // du document d'architecture) — les autres catégories tiennent dans un sac à dos de livreur.
     private const SCHEDULED_TYPES = ['furniture'];
 
-    /** POST /restaurants — le restaurateur crée sa fiche (préalable à l'onboarding Stripe). */
+    /** POST /restaurants — le restaurateur crée sa fiche. */
     public function create(Request $request, Response $response): Response
     {
         $body = (array) $request->getParsedBody();
 
-        foreach (['name', 'siret', 'adresse', 'lat', 'lng'] as $field) {
+        foreach (['name', 'adresse', 'lat', 'lng'] as $field) {
             if (empty($body[$field]) && $body[$field] !== '0') {
                 return JsonResponse::error($response, 422, 'Champ manquant', $field);
             }
@@ -37,7 +37,7 @@ final class RestaurantController
         $slug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($body['name'])), '-');
 
         $stmt = Database::connection()->prepare(
-            'INSERT INTO restaurants (owner_id, zone_id, name, slug, siret, adresse, lat, lng, cuisine_origine, business_type, delivery_mode)
+            'INSERT INTO restaurants (owner_id, zone_id, name, slug, rccm, adresse, lat, lng, cuisine_origine, business_type, delivery_mode)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
@@ -45,7 +45,7 @@ final class RestaurantController
             $body['zone_id'] ?? null,
             $body['name'],
             $slug,
-            $body['siret'],
+            $body['rccm'] ?? null,
             $body['adresse'],
             $body['lat'],
             $body['lng'],
@@ -90,7 +90,7 @@ final class RestaurantController
     {
         $stmt = Database::connection()->prepare(
             'SELECT r.id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode,
-                    r.stripe_account_id, r.commission_pct, COALESCE(z.currency, "EUR") AS currency
+                    r.commission_pct, COALESCE(z.currency, "XOF") AS currency
              FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
              WHERE r.owner_id = ? ORDER BY r.id LIMIT 1'
         );
@@ -100,9 +100,6 @@ final class RestaurantController
         if ($restaurant === false) {
             return JsonResponse::error($response, 404, "Vous n'avez pas encore de restaurant");
         }
-
-        $restaurant['stripe_connected'] = $restaurant['stripe_account_id'] !== null;
-        unset($restaurant['stripe_account_id']);
 
         return JsonResponse::ok($response, $restaurant);
     }
@@ -209,13 +206,13 @@ final class RestaurantController
             $lng = (float) $params['lng'];
 
             $select = "r.id, r.name, r.slug, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode, r.lat, r.lng,
-                COALESCE(z.currency, 'EUR') AS currency, z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
+                COALESCE(z.currency, 'XOF') AS currency, z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
                 (6371 * acos(cos(radians(?)) * cos(radians(r.lat)) *
                 cos(radians(r.lng) - radians(?)) + sin(radians(?)) * sin(radians(r.lat)))) AS distance_km";
             $args = array_merge([$lat, $lng, $lat], $args);
             $orderBy = 'distance_km ASC';
         } else {
-            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode, r.lat, r.lng, COALESCE(z.currency, 'EUR') AS currency";
+            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode, r.lat, r.lng, COALESCE(z.currency, 'XOF') AS currency";
         }
 
         $sql = "SELECT {$select} FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
@@ -240,9 +237,11 @@ final class RestaurantController
     private function withDeliveryEstimate(array $restaurant): array
     {
         $distanceKm = (float) $restaurant['distance_km'];
-        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 150);
-        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 40);
-        $minFee = (int) ($restaurant['min_fee_cents'] ?? 190);
+        // Repli si le restaurant n'a pas de zone_id assigné — mêmes valeurs que le seed Abidjan
+        // (voir database/schema.sql), pour rester à l'échelle XOF plutôt qu'un repli EUR-cents.
+        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 50000);
+        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 15000);
+        $minFee = (int) ($restaurant['min_fee_cents'] ?? 100000);
         $surge = (float) ($restaurant['surge_multiplier'] ?? 1.0);
 
         $restaurant['delivery_fee_cents'] = (int) round(max($minFee, $baseFee + $distanceKm * $perKm) * $surge);
@@ -308,7 +307,7 @@ final class RestaurantController
     {
         $stmt = Database::connection()->prepare(
             'SELECT r.id, r.owner_id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.photo_url, r.business_type,
-                    r.delivery_mode, r.commission_pct, COALESCE(z.currency, "EUR") AS currency
+                    r.delivery_mode, r.commission_pct, COALESCE(z.currency, "XOF") AS currency
              FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
              WHERE r.id = ? AND r.is_active = 1'
         );

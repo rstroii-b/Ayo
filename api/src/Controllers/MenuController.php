@@ -66,7 +66,7 @@ final class MenuController
             $body['description'] ?? null,
             $body['ingredients'] ?? null,
             $body['price_cents'],
-            $body['vat_rate'] ?? 10.00,
+            $body['vat_rate'] ?? 18.00,
             $body['photo_url'] ?? null,
             $body['allergenes'] ?? null,
         ]);

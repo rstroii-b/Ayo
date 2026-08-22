@@ -33,7 +33,7 @@
     <main class="main">
       <div class="dtopbar">
         <h1>Commandes en direct</h1>
-        <div id="stripe-status"></div>
+        <div id="mobile-money-status"></div>
       </div>
 
       <div class="dcontent">
@@ -51,15 +51,15 @@
               </select>
             </div>
             <div class="field"><label for="cuisine_origine">Cuisine</label><input id="cuisine_origine" name="cuisine_origine" placeholder="Sénégal, Cameroun…"></div>
-            <div class="field"><label for="siret">SIRET</label><input id="siret" name="siret" required maxlength="14"></div>
+            <div class="field"><label for="rccm">Numéro RCCM — facultatif</label><input id="rccm" name="rccm" maxlength="32"></div>
             <div class="field"><label for="adresse">Adresse</label><input id="adresse" name="adresse" required></div>
             <button type="button" class="btn btn-ghost" id="locate-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
               Utiliser ma position actuelle
             </button>
             <p class="state-msg" id="locate-status" style="margin:-6px 0 0;"></p>
-            <div class="field"><label for="lat">Latitude</label><input id="lat" name="lat" type="number" step="any" required value="48.8566"></div>
-            <div class="field"><label for="lng">Longitude</label><input id="lng" name="lng" type="number" step="any" required value="2.3522"></div>
+            <div class="field"><label for="lat">Latitude</label><input id="lat" name="lat" type="number" step="any" required value="5.3600"></div>
+            <div class="field"><label for="lng">Longitude</label><input id="lng" name="lng" type="number" step="any" required value="-4.0083"></div>
             <button type="submit" class="btn btn-primary">Créer mon commerce</button>
             <p class="error-msg" id="setup-error" hidden></p>
           </form>

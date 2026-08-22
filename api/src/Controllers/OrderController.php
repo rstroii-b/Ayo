@@ -33,6 +33,16 @@ final class OrderController
         'client' => [
             'pending' => ['cancelled'],
         ],
+        // Résolution de litige : un admin peut annuler une commande à n'importe quel stade non
+        // terminal (jamais forcer "delivered", qui déclenche les virements — voir PayoutService).
+        'admin' => [
+            'pending' => ['cancelled'],
+            'accepted' => ['cancelled'],
+            'preparing' => ['cancelled'],
+            'ready_for_pickup' => ['cancelled'],
+            'picked_up' => ['cancelled'],
+            'delivering' => ['cancelled'],
+        ],
     ];
 
     /** POST /orders — le client passe commande. Les prix sont toujours recalculés côté serveur. */
@@ -142,9 +152,11 @@ final class OrderController
             (float) $address['lng']
         );
 
-        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 150);
-        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 40);
-        $minFee = (int) ($restaurant['min_fee_cents'] ?? 190);
+        // Repli si le restaurant n'a pas de zone_id assigné — mêmes valeurs que le seed Abidjan
+        // (voir database/schema.sql), pour rester à l'échelle XOF plutôt qu'un repli EUR-cents.
+        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 50000);
+        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 15000);
+        $minFee = (int) ($restaurant['min_fee_cents'] ?? 100000);
         $surge = (float) ($restaurant['surge_multiplier'] ?? 1.0);
 
         $deliveryFeeCents = (int) round(max($minFee, $baseFee + $distanceKm * $perKm) * $surge);
@@ -308,10 +320,21 @@ final class OrderController
         ][$nextStatus] ?? null;
 
         $sql = 'UPDATE orders SET status = ?' . ($timestampColumn ? ", {$timestampColumn} = NOW()" : '') . ' WHERE id = ?';
-        $db->prepare($sql)->execute([$nextStatus, $order['id']]);
 
-        $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, ?, ?)')
-            ->execute([$order['id'], $nextStatus, $role]);
+        // Transaction : le changement de statut et sa trace dans order_events doivent réussir
+        // ensemble, sinon la commande se retrouve dans un état muet (statut changé, aucun
+        // historique de qui/quand) sans même que l'appelant reçoive une réponse cohérente.
+        $db->beginTransaction();
+
+        try {
+            $db->prepare($sql)->execute([$nextStatus, $order['id']]);
+            $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, ?, ?)')
+                ->execute([$order['id'], $nextStatus, $role]);
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
 
         Realtime::trigger("private-order.{$order['id']}", 'status-updated', ['status' => $nextStatus]);
         Realtime::trigger("private-restaurant.{$order['restaurant_id']}", 'order-updated', [
@@ -624,6 +647,12 @@ final class OrderController
 
     private function roleForOrder(Request $request, array $order): string
     {
+        // Vérifié avant le match par user_id : un admin n'est jamais partie à la commande par
+        // identité (c'est findAccessibleOrder qui lui donne accès via son rôle, pas son id).
+        if ($request->getAttribute('user_role') === 'admin') {
+            return 'admin';
+        }
+
         $userId = (int) $request->getAttribute('user_id');
 
         return match ($userId) {

@@ -91,3 +91,36 @@ export async function apiFetch(path, { method = 'GET', body = null } = {}) {
 
   return data;
 }
+
+/** Envoi multipart (upload de fichier) — pas de Content-Type manuel, le navigateur fixe la boundary. */
+export async function apiFetchFile(path, formData) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers, body: formData });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const error = new Error(data?.title ?? `Erreur ${response.status}`);
+    error.status = response.status;
+    error.detail = data?.detail;
+    throw error;
+  }
+
+  return data;
+}
+
+/** Récupère une réponse binaire authentifiée (ex: document KYC) — un <img src="..."> ne peut pas envoyer de Bearer token. */
+export async function apiFetchBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (!response.ok) {
+    throw new Error(`Erreur ${response.status}`);
+  }
+
+  return { blob: await response.blob(), contentType: response.headers.get('Content-Type') };
+}

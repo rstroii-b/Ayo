@@ -61,12 +61,10 @@ final class AuthController
             $userId = (int) $db->lastInsertId();
 
             if ($body['role'] === 'driver') {
-                // SIRET facultatif — obligatoire en pratique pour un auto-entrepreneur français
-                // (voir CGU §2), mais un identifiant professionnel local peut ne pas encore exister
-                // ou être demandé sous une autre forme dans les pays où Ayo est en phase de test.
+                // RCCM facultatif (voir CGU §2) — beaucoup de livreurs indépendants n'en ont pas encore.
                 $db->prepare(
-                    'INSERT INTO driver_profiles (user_id, siret, vehicule_type) VALUES (?, ?, ?)'
-                )->execute([$userId, empty($body['siret']) ? null : $body['siret'], $body['vehicule_type'] ?? 'velo']);
+                    'INSERT INTO driver_profiles (user_id, rccm, vehicule_type) VALUES (?, ?, ?)'
+                )->execute([$userId, empty($body['rccm']) ? null : $body['rccm'], $body['vehicule_type'] ?? 'velo']);
             }
 
             $db->commit();

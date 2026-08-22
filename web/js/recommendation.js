@@ -1,6 +1,6 @@
 import { apiFetch } from './api.js';
 import { isLoggedIn } from './auth.js';
-import { escapeHtml, formatEuros } from './format.js';
+import { escapeHtml, formatMoney } from './format.js';
 
 /**
  * Carte "Pour toi ce soir" — suggère le plat le plus souvent recommandé au client d'après ses
@@ -20,7 +20,7 @@ export async function initRecommendationCard() {
         <div class="reco-info">
           <span class="reco-eyebrow">Pour toi ce soir</span>
           <div class="reco-name">${escapeHtml(recommendation.name)}</div>
-          <div class="reco-sub">${escapeHtml(recommendation.restaurant_name)} · ${formatEuros(recommendation.price_cents)}</div>
+          <div class="reco-sub">${escapeHtml(recommendation.restaurant_name)} · ${formatMoney(recommendation.price_cents)}</div>
         </div>
         <span class="reco-cta">
           Revoir

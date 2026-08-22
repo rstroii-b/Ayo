@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
-import { formatEuros, escapeHtml } from '../format.js';
+import { formatMoney, escapeHtml } from '../format.js';
 
 const STATUS_LABELS = {
   pending: 'Envoyée',
@@ -32,7 +32,7 @@ function orderRowHtml(order) {
         <span class="state-msg">${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
       </div>
       <div style="text-align:right;">
-        <div class="price">${formatEuros(order.total_cents)}</div>
+        <div class="price">${formatMoney(order.total_cents)}</div>
         <span style="font-size:11.5px;font-weight:600;color:${color};">${STATUS_LABELS[order.status] ?? order.status}</span>
       </div>
     </a>

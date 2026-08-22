@@ -3,27 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paramètres — Ayo Pro</title>
+<title>Vérification KYC — Ayo Admin</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="./css/app.css">
 <link rel="stylesheet" href="./css/backoffice.css">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0A0A0C">
 <link rel="icon" href="/assets/icons/favicon-32.png">
-<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-<script type="module" src="/js/register-sw.js"></script></head>
+</head>
 <body class="desktop">
   <div class="shell">
     <nav class="sidebar">
       <div class="logo">
         <img src="/assets/logo.png" alt="Ayo" style="width:140px;height:auto;">
       </div>
-      <a class="navitem" href="/backoffice.html">Commandes <span class="badge" id="nav-count" hidden></span></a>
-      <a class="navitem" href="/backoffice-history.html">Historique</a>
-      <a class="navitem" href="/backoffice-menu.html">Menu</a>
-      <a class="navitem" href="/backoffice-stats.html">Statistiques</a>
-      <a class="navitem active" href="/backoffice-settings.html">Paramètres</a>
-      <div class="foot" id="restaurant-name-foot"></div>
+      <a class="navitem active" href="/admin.html">Vérification KYC</a>
+      <div class="foot">Administration</div>
       <button class="navitem" id="logout-btn" type="button" style="border:none;background:none;cursor:pointer;width:100%;font-family:inherit;">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
         Déconnexion
@@ -32,16 +25,29 @@
 
     <main class="main">
       <div class="dtopbar">
-        <h1>Paramètres du restaurant</h1>
-        <div id="mobile-money-status"></div>
+        <h1>Livreurs — vérification d'identité</h1>
+        <div class="field" style="margin:0;min-width:200px;">
+          <select id="status-filter">
+            <option value="pending" selected>En attente</option>
+            <option value="verified">Vérifiés</option>
+            <option value="rejected">Rejetés</option>
+          </select>
+        </div>
       </div>
 
-      <div class="dcontent" id="settings-content">
-        <p class="state-msg">Chargement…</p>
+      <div class="dcontent">
+        <div id="drivers-list"><p class="state-msg">Chargement…</p></div>
       </div>
     </main>
   </div>
 
-  <script type="module" src="./js/pages/backoffice-settings.js"></script>
+  <div id="kyc-modal-overlay" class="modal-overlay" hidden style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:50;">
+    <div class="cart-block" style="max-width:520px;width:90%;max-height:85vh;overflow:auto;padding:20px;">
+      <div id="kyc-modal-body"></div>
+      <button type="button" class="btn btn-ghost" id="kyc-modal-close" style="margin-top:14px;">Fermer</button>
+    </div>
+  </div>
+
+  <script type="module" src="./js/pages/admin.js"></script>
 </body>
 </html>

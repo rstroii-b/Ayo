@@ -1,6 +1,6 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
-import { formatEuros, escapeHtml } from '../format.js';
+import { formatMoney, escapeHtml } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
 import { realtimeClient } from '../realtime.js';
 
@@ -124,18 +124,18 @@ function renderItems(order) {
   block.hidden = false;
 
   const detailLines = order.items.map((item) => `
-    <div class="detail-line"><span>${item.quantity}x ${escapeHtml(item.name)}</span><span>${formatEuros(item.price_cents * item.quantity)}</span></div>
+    <div class="detail-line"><span>${item.quantity}x ${escapeHtml(item.name)}</span><span>${formatMoney(item.price_cents * item.quantity)}</span></div>
   `).join('');
 
   block.innerHTML = `
     <button class="items-toggle" id="items-toggle" type="button">
       <span class="il">${order.items.length} article${order.items.length > 1 ? 's' : ''}</span>
-      <span class="ir">${formatEuros(order.total_cents)}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+      <span class="ir">${formatMoney(order.total_cents)}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
     </button>
     <div class="items-detail" id="items-detail">
       ${detailLines}
-      <div class="detail-line"><span>Livraison</span><span>${formatEuros(order.delivery_fee_cents)}</span></div>
-      <div class="total-line"><span>Total</span><span>${formatEuros(order.total_cents)}</span></div>
+      <div class="detail-line"><span>Livraison</span><span>${formatMoney(order.delivery_fee_cents)}</span></div>
+      <div class="total-line"><span>Total</span><span>${formatMoney(order.total_cents)}</span></div>
     </div>
   `;
 

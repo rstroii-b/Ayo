@@ -2,9 +2,9 @@ const CART_KEY = 'saveurs_cart';
 
 function read() {
   try {
-    return JSON.parse(localStorage.getItem(CART_KEY)) ?? { restaurantId: null, restaurantName: null, currency: 'EUR', items: [] };
+    return JSON.parse(localStorage.getItem(CART_KEY)) ?? { restaurantId: null, restaurantName: null, items: [] };
   } catch {
-    return { restaurantId: null, restaurantName: null, currency: 'EUR', items: [] };
+    return { restaurantId: null, restaurantName: null, items: [] };
   }
 }
 
@@ -27,7 +27,7 @@ function lineKey(menuItemId, options = []) {
 }
 
 /** Ajoute un article — vide le panier si on change de commerce (une commande = un seul commerce). */
-export function addItem(restaurantId, restaurantName, item, currency = 'EUR') {
+export function addItem(restaurantId, restaurantName, item) {
   const cart = read();
 
   if (cart.restaurantId !== null && cart.restaurantId !== restaurantId) {
@@ -36,7 +36,6 @@ export function addItem(restaurantId, restaurantName, item, currency = 'EUR') {
 
   cart.restaurantId = restaurantId;
   cart.restaurantName = restaurantName;
-  cart.currency = currency;
 
   const key = lineKey(item.menuItemId, item.options);
   const existing = cart.items.find((line) => lineKey(line.menuItemId, line.options) === key);
@@ -63,7 +62,7 @@ export function setQuantity(lineIndex, quantity) {
 }
 
 export function clearCart() {
-  write({ restaurantId: null, restaurantName: null, currency: 'EUR', items: [] });
+  write({ restaurantId: null, restaurantName: null, items: [] });
 }
 
 export function cartSubtotalCents(cart = read()) {
