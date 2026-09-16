@@ -6,11 +6,13 @@ namespace Saveurs\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\FraudDetector;
 use Saveurs\Services\PayoutService;
 use Saveurs\Services\PushService;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
 use Saveurs\Support\Realtime;
+use Saveurs\Support\RequestContext;
 
 /**
  * Transitions de statut autorisées par rôle — voir §3/§6 du document
@@ -235,6 +237,9 @@ final class OrderController
 
         Realtime::trigger("private-restaurant.{$restaurantId}", 'new-order', ['order_id' => $orderId]);
 
+        FraudDetector::record('order_create', $clientId, RequestContext::ip($request), RequestContext::userAgent($request), ['order_id' => $orderId]);
+        FraudDetector::onOrderCreated($orderId, $clientId, RequestContext::ip($request), ['distance_km' => $distanceKm, 'label' => $address['label'] ?? '']);
+
         return JsonResponse::ok($response, [
             'order_id' => $orderId,
             'status' => 'pending',
@@ -405,6 +410,7 @@ final class OrderController
         }
 
         if ($nextStatus === 'delivered') {
+            FraudDetector::onDelivered((int) $order['id'], isset($order['driver_id']) ? (int) $order['driver_id'] : null);
             (new PayoutService())->releaseForOrder($order['id']);
         }
 

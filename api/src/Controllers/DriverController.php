@@ -106,7 +106,11 @@ final class DriverController
             return JsonResponse::error($response, 422, 'lat et lng requis');
         }
 
-        $driverId = $request->getAttribute('user_id');
+        $driverId = (int) $request->getAttribute('user_id');
+
+        // Détection avant l'écrasement de la dernière position : on compare le saut GPS (position
+        // falsifiée = vitesse surhumaine). Ne bloque pas l'envoi, lève une alerte.
+        \Saveurs\Services\FraudDetector::onDriverLocation($driverId, (float) $body['lat'], (float) $body['lng']);
 
         Database::connection()->prepare(
             'INSERT INTO driver_locations (driver_id, lat, lng) VALUES (?, ?, ?)

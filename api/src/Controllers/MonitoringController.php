@@ -88,6 +88,10 @@ final class MonitoringController
             ],
             // Un temps réel muet ou un CinetPay non configuré sont des pannes silencieuses :
             // l'admin doit pouvoir le constater sans ouvrir le .env du serveur.
+            'fraud' => [
+                'open_alerts' => (int) Database::connection()->query("SELECT COUNT(*) FROM fraud_alerts WHERE status = 'open'")->fetchColumn(),
+                'high_open_alerts' => (int) Database::connection()->query("SELECT COUNT(*) FROM fraud_alerts WHERE status = 'open' AND severity = 'high'")->fetchColumn(),
+            ],
             'services' => [
                 'cinetpay_configured' => CinetPayClient::client() !== null,
                 'realtime_configured' => ($_ENV['PUSHER_KEY'] ?? '') !== '' && ($_ENV['PUSHER_SECRET'] ?? '') !== '',
@@ -174,6 +178,62 @@ final class MonitoringController
      * GET /admin/orders/{id}/events — piste d'audit complète d'une commande : transitions de
      * statut, événements de paiement, et les virements déclenchés à la livraison.
      */
+    /** GET /admin/fraud-alerts?status=open&limit=50 — alertes du moteur de détection de fraude. */
+    public function fraudAlerts(Request $request, Response $response): Response
+    {
+        $query = $request->getQueryParams();
+        $status = $query['status'] ?? 'open';
+
+        if (!in_array($status, ['open', 'reviewed', 'dismissed', 'all'], true)) {
+            return JsonResponse::error($response, 422, 'status invalide');
+        }
+
+        [$limit, $offset] = $this->pagination($query);
+
+        $sql =
+            'SELECT fa.id, fa.type, fa.severity, fa.user_id, fa.order_id, fa.detail, fa.meta_json, fa.status, fa.created_at,
+                    u.first_name, u.last_name, u.role
+             FROM fraud_alerts fa
+             LEFT JOIN users u ON u.id = fa.user_id'
+            . ($status === 'all' ? '' : ' WHERE fa.status = ?')
+            . " ORDER BY fa.created_at DESC LIMIT {$limit} OFFSET {$offset}";
+
+        $stmt = Database::connection()->prepare($sql);
+        $stmt->execute($status === 'all' ? [] : [$status]);
+
+        $alerts = array_map(static function (array $row): array {
+            $row['id'] = (int) $row['id'];
+            $row['user_id'] = $row['user_id'] === null ? null : (int) $row['user_id'];
+            $row['order_id'] = $row['order_id'] === null ? null : (int) $row['order_id'];
+            $row['meta'] = $row['meta_json'] === null ? null : json_decode($row['meta_json'], true);
+            unset($row['meta_json']);
+
+            return $row;
+        }, $stmt->fetchAll());
+
+        return JsonResponse::ok($response, ['alerts' => $alerts, 'limit' => $limit, 'offset' => $offset]);
+    }
+
+    /** PATCH /admin/fraud-alerts/{id} — body {status: reviewed|dismissed} */
+    public function updateFraudAlert(Request $request, Response $response, array $routeArgs): Response
+    {
+        $body = (array) $request->getParsedBody();
+        $status = $body['status'] ?? null;
+
+        if (!in_array($status, ['reviewed', 'dismissed', 'open'], true)) {
+            return JsonResponse::error($response, 422, 'status doit être reviewed, dismissed ou open');
+        }
+
+        $stmt = Database::connection()->prepare('UPDATE fraud_alerts SET status = ? WHERE id = ?');
+        $stmt->execute([$status, (int) $routeArgs['id']]);
+
+        if ($stmt->rowCount() === 0) {
+            return JsonResponse::error($response, 404, 'Alerte introuvable');
+        }
+
+        return JsonResponse::ok($response, ['status' => $status]);
+    }
+
     public function orderEvents(Request $request, Response $response, array $routeArgs): Response
     {
         $orderId = (int) $routeArgs['id'];

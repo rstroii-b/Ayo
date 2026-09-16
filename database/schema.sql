@@ -274,6 +274,42 @@ CREATE TABLE webauthn_challenges (
   CONSTRAINT fk_webauthn_challenge_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------
+-- Détection de fraude & journal de sécurité
+-- ---------------------------------------------------------------
+
+-- Journal des actions sensibles (inscription, connexion, commande, changement mobile money…)
+-- avec le contexte réseau. Alimente la détection multi-comptes (même IP / même empreinte) et
+-- l'investigation a posteriori. Volontairement séparé des logs fichier : requêtable en SQL.
+CREATE TABLE security_events (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id           BIGINT UNSIGNED NULL,
+  action            VARCHAR(40) NOT NULL,       -- ex: 'register', 'login', 'order_create', 'mobile_money_update'
+  ip                VARCHAR(45) NULL,           -- IPv4/IPv6
+  user_agent        VARCHAR(255) NULL,
+  meta_json         JSON NULL,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_secevents_user (user_id, created_at),
+  KEY ix_secevents_ip (ip, created_at),
+  KEY ix_secevents_action (action, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Alertes de fraude levées par FraudDetector. Une alerte non résolue remonte dans le panel admin.
+CREATE TABLE fraud_alerts (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  type              VARCHAR(50) NOT NULL,       -- ex: 'mobile_money_reuse', 'gps_teleport', 'impossible_delivery'
+  severity          ENUM('low','medium','high') NOT NULL DEFAULT 'medium',
+  user_id           BIGINT UNSIGNED NULL,       -- acteur concerné (livreur, client, restaurateur)
+  order_id          BIGINT UNSIGNED NULL,
+  detail            VARCHAR(255) NOT NULL,
+  meta_json         JSON NULL,
+  status            ENUM('open','reviewed','dismissed') NOT NULL DEFAULT 'open',
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_fraud_status (status, created_at),
+  KEY ix_fraud_type (type, created_at),
+  KEY ix_fraud_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------

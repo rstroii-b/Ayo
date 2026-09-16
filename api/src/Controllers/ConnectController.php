@@ -6,8 +6,10 @@ namespace Saveurs\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\FraudDetector;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\RequestContext;
 
 /**
  * Paiements sortants (reversements) — restaurateurs et livreurs enregistrent leur compte
@@ -55,6 +57,7 @@ final class ConnectController
             return JsonResponse::error($response, 422, 'operator et phone_number requis');
         }
 
+        $number = (string) $body['phone_number'];
         $db = Database::connection();
 
         if ($role === 'restaurant_owner') {
@@ -63,12 +66,24 @@ final class ConnectController
                 return JsonResponse::error($response, 404, "Vous n'avez pas encore de restaurant");
             }
 
+            // Anti multi-comptes : un même portefeuille de reversement sur plusieurs bénéficiaires
+            // est le montage type pour siphonner des virements. On refuse et on lève une alerte.
+            if (FraudDetector::isMobileMoneyReused($number, 'restaurant', (int) $restaurant['id'])) {
+                return JsonResponse::error($response, 409, 'Numéro mobile money déjà utilisé', 'Ce numéro est déjà rattaché à un autre compte.');
+            }
+
             $db->prepare('UPDATE restaurants SET mobile_money_operator = ?, mobile_money_number = ? WHERE id = ?')
-                ->execute([$body['operator'], $body['phone_number'], $restaurant['id']]);
+                ->execute([$body['operator'], $number, $restaurant['id']]);
         } else {
+            if (FraudDetector::isMobileMoneyReused($number, 'driver', $userId)) {
+                return JsonResponse::error($response, 409, 'Numéro mobile money déjà utilisé', 'Ce numéro est déjà rattaché à un autre compte.');
+            }
+
             $db->prepare('UPDATE driver_profiles SET mobile_money_operator = ?, mobile_money_number = ? WHERE user_id = ?')
-                ->execute([$body['operator'], $body['phone_number'], $userId]);
+                ->execute([$body['operator'], $number, $userId]);
         }
+
+        FraudDetector::record('mobile_money_update', $userId, RequestContext::ip($request), RequestContext::userAgent($request), ['role' => $role]);
 
         return JsonResponse::ok($response, ['updated' => true]);
     }

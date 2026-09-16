@@ -20,6 +20,7 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 function init() {
   document.getElementById('payment-filter').addEventListener('change', loadTransactions);
   document.getElementById('payout-filter').addEventListener('change', loadPayouts);
+  document.getElementById('fraud-filter').addEventListener('change', loadFraud);
   document.getElementById('audit-close').addEventListener('click', closeAudit);
 
   refreshAll();
@@ -36,6 +37,7 @@ function init() {
     const channel = realtimeClient().subscribe('private-admin');
     channel.bind('payment', refreshAll);
     channel.bind('payout', refreshAll);
+    channel.bind('fraud', refreshAll);
     channel.bind('pusher:subscription_succeeded', () => setLivePill(true));
     channel.bind('pusher:subscription_error', () => setLivePill(false));
   } catch {
@@ -51,6 +53,7 @@ function setLivePill(connected) {
 
 function refreshAll() {
   loadMetrics();
+  loadFraud();
   loadPayouts();
   loadTransactions();
 }
@@ -83,6 +86,7 @@ async function loadMetrics() {
         ${statCard('En souffrance', String(m.payments.stale_unpaid_count), `non encaissées depuis +${m.payments.stale_after_minutes} min`)}
         ${statCard('Virements échoués', String(m.payouts.failed_count), formatMoney(m.payouts.failed_cents))}
         ${statCard('Virements en attente', String(m.payouts.pending_count), formatMoney(m.payouts.pending_cents))}
+        ${statCard('Alertes fraude', String(m.fraud?.open_alerts ?? 0), `${m.fraud?.high_open_alerts ?? 0} critique(s)`)}
       </div>
       <p class="statsub" style="margin-top:14px;">
         ${services.map(([name, ok]) => `<span class="pill ${ok ? 'ok' : 'bad'}" style="padding:4px 10px;font-size:11px;margin-right:8px;">${escapeHtml(name)} ${ok ? 'configuré' : 'non configuré'}</span>`).join('')}
@@ -93,6 +97,76 @@ async function loadMetrics() {
     el.innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
   }
 }
+
+const FRAUD_SEVERITY = { high: 'bad', medium: 'warn', low: 'ok' };
+const FRAUD_TYPE_LABEL = {
+  mobile_money_reuse: 'N° mobile money réutilisé',
+  gps_teleport: 'Saut GPS impossible',
+  impossible_delivery: 'Livraison trop rapide',
+  order_velocity: 'Cadence de commandes anormale',
+  address_mismatch: 'Adresse incohérente',
+};
+
+async function loadFraud() {
+  const el = document.getElementById('fraud-list');
+  const status = document.getElementById('fraud-filter').value;
+
+  try {
+    const { alerts } = await apiFetch(`/admin/fraud-alerts?status=${status}`);
+
+    if (alerts.length === 0) {
+      el.innerHTML = '<p class="state-msg">Aucune alerte dans cette catégorie.</p>';
+
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="mtable">
+        <div class="mrow head">
+          <div class="mname">Alerte</div>
+          <div class="mtoggle">Gravité</div>
+          <div class="mtoggle" style="width:200px;justify-content:flex-end;">Action</div>
+        </div>
+        ${alerts.map(fraudRow).join('')}
+      </div>
+    `;
+  } catch (error) {
+    el.innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function fraudRow(alert) {
+  const who = alert.first_name ? `${alert.first_name} ${alert.last_name ?? ''} (${alert.role})` : '—';
+
+  return `
+    <div class="mrow" data-alert-id="${alert.id}">
+      <div class="mname">${escapeHtml(FRAUD_TYPE_LABEL[alert.type] ?? alert.type)}
+        <div class="d">${escapeHtml(alert.detail)} — ${escapeHtml(who)}${alert.order_id ? ` — commande #SV-${alert.order_id}` : ''} — ${escapeHtml(alert.created_at)}</div>
+      </div>
+      <div class="mtoggle"><span class="pill ${FRAUD_SEVERITY[alert.severity] ?? 'warn'}" style="padding:4px 10px;font-size:11px;">${escapeHtml(alert.severity)}</span></div>
+      <div class="mtoggle" style="width:200px;justify-content:flex-end;gap:6px;">
+        ${alert.status === 'open' ? `
+          <button class="btn btn-ghost" data-fraud-action="reviewed" data-id="${alert.id}" style="padding:6px 10px;font-size:11.5px;">Vu</button>
+          <button class="btn btn-ghost" data-fraud-action="dismissed" data-id="${alert.id}" style="padding:6px 10px;font-size:11.5px;">Écarter</button>
+        ` : `<span class="state-msg" style="font-size:11.5px;">${escapeHtml(alert.status)}</span>`}
+      </div>
+    </div>
+  `;
+}
+
+document.getElementById('fraud-list').addEventListener('click', async (event) => {
+  const btn = event.target.closest('button[data-fraud-action]');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    await apiFetch(`/admin/fraud-alerts/${btn.dataset.id}`, { method: 'PATCH', body: { status: btn.dataset.fraudAction } });
+    loadFraud();
+    loadMetrics();
+  } catch (error) {
+    btn.disabled = false;
+    alert(error.message);
+  }
+});
 
 async function loadPayouts() {
   const el = document.getElementById('payouts-list');

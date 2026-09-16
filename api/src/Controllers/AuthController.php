@@ -6,9 +6,11 @@ namespace Saveurs\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\FraudDetector;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
 use Saveurs\Support\Jwt;
+use Saveurs\Support\RequestContext;
 
 final class AuthController
 {
@@ -73,6 +75,8 @@ final class AuthController
             throw $e;
         }
 
+        FraudDetector::record('register', $userId, RequestContext::ip($request), RequestContext::userAgent($request), ['role' => $body['role']]);
+
         return JsonResponse::ok($response, [
             'user_id' => $userId,
             'token' => Jwt::issue($userId, $body['role']),
@@ -99,6 +103,8 @@ final class AuthController
         if ((int) $user['is_active'] !== 1) {
             return JsonResponse::error($response, 403, 'Compte désactivé');
         }
+
+        FraudDetector::record('login', (int) $user['id'], RequestContext::ip($request), RequestContext::userAgent($request), []);
 
         return JsonResponse::ok($response, [
             'user_id' => (int) $user['id'],

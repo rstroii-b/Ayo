@@ -112,6 +112,8 @@ $app->group('/api/v1', function ($group) use ($auth) {
     $group->get('/admin/transactions', [MonitoringController::class, 'transactions'])->add($auth('admin'));
     $group->get('/admin/payouts', [MonitoringController::class, 'payouts'])->add($auth('admin'));
     $group->get('/admin/orders/{id}/events', [MonitoringController::class, 'orderEvents'])->add($auth('admin'));
+    $group->get('/admin/fraud-alerts', [MonitoringController::class, 'fraudAlerts'])->add($auth('admin'));
+    $group->patch('/admin/fraud-alerts/{id}', [MonitoringController::class, 'updateFraudAlert'])->add($auth('admin'));
 
     // Sonde publique pour les monitors externes — aucune donnée métier exposée.
     $group->get('/health', [MonitoringController::class, 'health']);
