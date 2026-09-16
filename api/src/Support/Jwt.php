@@ -32,7 +32,12 @@ final class Jwt
             $decoded = FirebaseJwt::decode($token, new Key($_ENV['JWT_SECRET'], 'HS256'));
 
             return ['sub' => (int) $decoded->sub, 'role' => $decoded->role];
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Jeton expiré ou signature invalide : cas courant (onglet resté ouvert), donc
+            // "info" et pas "error" — mais tracé, sinon une campagne de jetons forgés ne
+            // laisse aucune empreinte. Le jeton lui-même n'est jamais journalisé.
+            Log::app()->info('auth.token_rejected', ['error' => $e->getMessage()]);
+
             return null;
         }
     }

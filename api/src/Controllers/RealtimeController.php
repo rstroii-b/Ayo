@@ -8,6 +8,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\Log;
 use Saveurs\Support\Realtime;
 
 /**
@@ -22,12 +23,19 @@ final class RealtimeController
         $channel = $body['channel_name'] ?? '';
         $socketId = $body['socket_id'] ?? '';
         $userId = (int) $request->getAttribute('user_id');
+        $role = (string) $request->getAttribute('user_role');
 
         if ($channel === '' || $socketId === '') {
             return JsonResponse::error($response, 422, 'channel_name et socket_id requis');
         }
 
-        if (!$this->userCanAccess($channel, $userId)) {
+        if (!$this->userCanAccess($channel, $userId, $role)) {
+            Log::app()->warning('realtime.channel_denied', [
+                'channel' => $channel,
+                'user_id' => $userId,
+                'role' => $role,
+            ]);
+
             return JsonResponse::error($response, 403, 'Accès refusé à ce canal');
         }
 
@@ -37,8 +45,14 @@ final class RealtimeController
         return $response->withHeader('Content-Type', 'application/json');
     }
 
-    private function userCanAccess(string $channel, int $userId): bool
+    private function userCanAccess(string $channel, int $userId, string $role): bool
     {
+        // Canal de supervision : toutes les transactions de la plateforme y passent, donc
+        // strictement réservé aux admins.
+        if ($channel === Realtime::ADMIN_CHANNEL) {
+            return $role === 'admin';
+        }
+
         $db = Database::connection();
 
         if (preg_match('/^private-order\.(\d+)$/', $channel, $m)) {

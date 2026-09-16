@@ -7,6 +7,7 @@ use Saveurs\Controllers\AuthController;
 use Saveurs\Controllers\ConnectController;
 use Saveurs\Controllers\DriverController;
 use Saveurs\Controllers\MenuController;
+use Saveurs\Controllers\MonitoringController;
 use Saveurs\Controllers\OrderController;
 use Saveurs\Controllers\PaymentController;
 use Saveurs\Controllers\PushController;
@@ -14,6 +15,7 @@ use Saveurs\Controllers\RealtimeController;
 use Saveurs\Controllers\RestaurantController;
 use Saveurs\Controllers\WebAuthnController;
 use Saveurs\Middleware\AuthMiddleware;
+use Saveurs\Support\Log;
 use Slim\Factory\AppFactory;
 use Slim\Psr7\Factory\ResponseFactory;
 
@@ -27,8 +29,10 @@ $app->addBodyParsingMiddleware();
 
 // Les traces d'erreur (chemins serveur, requêtes SQL, structure interne) ne doivent jamais
 // être renvoyées au client — seul un APP_DEBUG=true explicite (dev local) les affiche.
+// Elles partent en revanche systématiquement dans api/storage/logs/app.log : sans logger
+// explicite, Slim se rabattait sur error_log() et les traces se perdaient selon l'hébergeur.
 $debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
-$app->addErrorMiddleware($debug, true, true);
+$app->addErrorMiddleware($debug, true, true, Log::app());
 
 // CORS pour le développement local (front et API sur des ports différents).
 $app->add(function ($request, $handler) {
@@ -102,6 +106,15 @@ $app->group('/api/v1', function ($group) use ($auth) {
     $group->get('/admin/drivers', [AdminController::class, 'listDriversForKyc'])->add($auth('admin'));
     $group->get('/admin/drivers/{id}/kyc-document', [AdminController::class, 'kycDocument'])->add($auth('admin'));
     $group->patch('/admin/drivers/{id}/kyc', [AdminController::class, 'decideKyc'])->add($auth('admin'));
+
+    // Admin — supervision des transactions (paiements, virements, piste d'audit)
+    $group->get('/admin/metrics', [MonitoringController::class, 'metrics'])->add($auth('admin'));
+    $group->get('/admin/transactions', [MonitoringController::class, 'transactions'])->add($auth('admin'));
+    $group->get('/admin/payouts', [MonitoringController::class, 'payouts'])->add($auth('admin'));
+    $group->get('/admin/orders/{id}/events', [MonitoringController::class, 'orderEvents'])->add($auth('admin'));
+
+    // Sonde publique pour les monitors externes — aucune donnée métier exposée.
+    $group->get('/health', [MonitoringController::class, 'health']);
 
     // Paiement — CinetPay (mobile money, voir §5)
     $group->post('/payments/intent', [PaymentController::class, 'createIntent'])->add($auth('client'));

@@ -226,7 +226,7 @@ final class OrderController
     public function mine(Request $request, Response $response): Response
     {
         $stmt = Database::connection()->prepare(
-            'SELECT o.id, o.status, o.total_cents, o.created_at, r.name AS restaurant_name
+            'SELECT o.id, o.status, o.payment_status, o.total_cents, o.created_at, r.name AS restaurant_name
              FROM orders o JOIN restaurants r ON r.id = o.restaurant_id
              WHERE o.client_id = ?
              ORDER BY o.created_at DESC'
@@ -276,6 +276,11 @@ final class OrderController
         );
         $items->execute([$order['id']]);
         $order['items'] = $items->fetchAll();
+
+        // o.* remonte aussi les colonnes internes CinetPay : cinetpay_notify_token est le secret
+        // qui authentifie les webhooks de paiement. L'exposer au client permettrait de forger
+        // une confirmation de paiement — il ne sort jamais de l'API.
+        unset($order['cinetpay_notify_token']);
 
         if ($order['driver_id'] !== null) {
             $driver = Database::connection()->prepare(
@@ -450,7 +455,7 @@ final class OrderController
         $db = Database::connection();
 
         $stmt = $db->prepare(
-            "SELECT o.id, o.status, o.total_cents, o.note_livreur, o.created_at, u.first_name AS client_first_name
+            "SELECT o.id, o.status, o.payment_status, o.total_cents, o.note_livreur, o.created_at, u.first_name AS client_first_name
              FROM orders o
              JOIN restaurants r ON r.id = o.restaurant_id
              JOIN users u ON u.id = o.client_id
@@ -470,7 +475,7 @@ final class OrderController
         $db = Database::connection();
 
         $stmt = $db->prepare(
-            "SELECT o.id, o.status, o.subtotal_cents, o.total_cents, o.created_at, o.delivered_at,
+            "SELECT o.id, o.status, o.payment_status, o.subtotal_cents, o.total_cents, o.created_at, o.delivered_at,
                     u.first_name AS client_first_name
              FROM orders o
              JOIN restaurants r ON r.id = o.restaurant_id

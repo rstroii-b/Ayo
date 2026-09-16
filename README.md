@@ -153,8 +153,16 @@ Le sous-domaine dédié, pointé précisément sur `api/public/`, évite ce prob
    mysql -h <host-fourni-par-ionos> -u <user> -p <nom_base> < ../database/schema.sql
    ```
 
-   `api/storage/kyc/` (pièces d'identité livreurs) est créé automatiquement au premier upload —
-   vérifiez simplement que l'utilisateur PHP-FPM a le droit d'écrire dans `api/` sur l'hébergement.
+   `api/storage/kyc/` (pièces d'identité livreurs) et `api/storage/logs/` (journalisation, §7)
+   sont créés automatiquement au premier usage — vérifiez simplement que l'utilisateur PHP-FPM a
+   le droit d'écrire dans `api/` sur l'hébergement. Si `storage/logs/` n'est pas inscriptible,
+   les logs basculent sur `stderr` plutôt que de faire échouer les requêtes.
+
+   Sur une base **déjà en service**, appliquez aussi la migration de supervision :
+
+   ```bash
+   mysql -h <host> -u <user> -p <nom_base> < ../database/migrations/2026_09_16_transaction_monitoring.sql
+   ```
 
 5. **`api/.env`** (créer sur le serveur, ne jamais committer) : renseignez les vraies valeurs
    `DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, un `JWT_SECRET` fort et unique (`openssl rand -hex 32`),
@@ -170,8 +178,93 @@ Le sous-domaine dédié, pointé précisément sur `api/public/`, évite ce prob
    n'est pas déjà déduite automatiquement de `API_URL` (voir `PaymentController`/`PayoutService`,
    qui construisent cette URL depuis `.env`).
 
-Pas de service à faire tourner en arrière-plan (pas de queue, pas de WebSocket dans ce squelette)
-— l'hébergement mutualisé classique (PHP-FPM + Apache, sur requête) suffit tel quel.
+9. **Cron de réconciliation** (panneau IONOS → tâches planifiées, ou `crontab -e` en SSH) :
+
+   ```bash
+   */10 * * * * php /chemin/absolu/vers/api/bin/reconcile.php >> /dev/null 2>&1
+   ```
+
+   Sans lui, un webhook CinetPay perdu laisse une commande réellement payée en `unpaid` (voir §7).
+
+À part ce cron, pas de service à faire tourner en arrière-plan (pas de queue, pas de WebSocket
+auto-hébergé) — l'hébergement mutualisé classique (PHP-FPM + Apache, sur requête) suffit tel quel.
+
+## 7. Logs et supervision des transactions
+
+### Journalisation
+
+Deux fichiers JSON (une ligne par entrée) dans `api/storage/logs/`, hors de la racine web et
+déjà ignorés par git :
+
+| Fichier | Contenu | Rétention |
+|---|---|---|
+| `app-YYYY-MM-DD.log` | exploitation : exceptions non rattrapées, webhooks refusés, panne du temps réel, jetons rejetés | `LOG_MAX_FILES` (14 jours) |
+| `transactions-YYYY-MM-DD.log` | piste d'audit financière : un événement par mouvement d'argent | `LOG_TRANSACTIONS_MAX_FILES` (400 jours) |
+
+Chaque ligne porte un `request_id` qui relie toutes les traces d'une même requête (repris de
+l'en-tête `X-Request-Id` si un reverse-proxy en pose un). Les détails d'erreur ne sont **jamais**
+renvoyés au client : `APP_DEBUG=false` en production, la trace complète ne vit que dans le log.
+
+```bash
+# les mouvements d'argent du jour
+cat api/storage/logs/transactions-$(date +%F).log | jq -r '"\(.message) \(.context)"'
+# les virements en échec
+grep payout.failed api/storage/logs/transactions-*.log
+```
+
+### Écran de supervision
+
+`admin-transactions.html` (rôle admin) affiche en direct : encaissements du jour, paiements
+échoués, commandes non encaissées depuis plus de 30 min, virements en attente et en échec, et
+l'état de configuration de CinetPay / du temps réel / du push. Chaque commande donne accès à sa
+piste d'audit complète (`order_events` + virements déclenchés).
+
+La page se met à jour instantanément via le canal Pusher privé `private-admin` — sur lequel
+`PaymentLedger` et `PayoutService` diffusent chaque paiement et chaque virement — avec un
+rafraîchissement toutes les 20 s en filet de sécurité, comme le reste de l'app.
+
+Endpoints correspondants (tous en `admin` sauf le dernier) :
+
+```
+GET /api/v1/admin/metrics                 compteurs du tableau de bord
+GET /api/v1/admin/transactions?payment_status=paid|unpaid|failed
+GET /api/v1/admin/payouts?statut=failed|pending|sent
+GET /api/v1/admin/orders/{id}/events      piste d'audit d'une commande
+GET /api/v1/health                        sonde publique (200 / 503) pour un monitor externe
+```
+
+### État de paiement
+
+`orders.payment_status` (`unpaid` / `paid` / `failed`) et `orders.paid_at` répondent directement
+à « cette commande est-elle payée ? ». Avant, la seule trace était une ligne dans `order_events`
+que rien ne relisait. L'état est visible côté client (suivi de commande) et côté restaurateur
+(pastille sur la carte du kanban, mise à jour en temps réel).
+
+Sur une base déjà installée, appliquer la migration une seule fois — elle recalcule l'historique
+depuis `order_events` :
+
+```bash
+mysql -u root saveurs < database/migrations/2026_09_16_transaction_monitoring.sql
+```
+
+### Réconciliation (cron)
+
+Un webhook CinetPay peut se perdre (coupure réseau, déploiement en cours). `api/bin/reconcile.php`
+redemande à CinetPay l'état réel des paiements restés `unpaid` et des virements restés `pending`,
+puis régularise ce qui doit l'être :
+
+```bash
+*/10 * * * * php /chemin/vers/api/bin/reconcile.php >> /dev/null 2>&1
+```
+
+Le script laisse d'abord au webhook le temps de faire son travail (`RECONCILE_GRACE_MINUTES`) et
+ignore les transactions trop anciennes (`RECONCILE_LOOKBACK_DAYS`). Un rattrapage est journalisé en
+`warning` (`reconcile.missed_payment_webhook`) : plusieurs occurrences signalent un webhook mal
+configuré côté CinetPay, pas une fatalité à absorber par le cron.
+
+Toutes les transitions passent par `PaymentLedger`, qui conditionne chaque changement d'état à
+l'état de départ : un webhook rejoué par CinetPay et le cron peuvent arriver en même temps sur la
+même transaction sans produire de doublon ni de double comptabilisation.
 
 ## Ce qui est fait / pas fait
 
@@ -181,7 +274,9 @@ transitions de statut par rôle, un livreur qui "prend" une commande prête (`/o
 file d'attente temps réel du back-office (`/restaurant/orders/live`), enregistrement du compte
 mobile money (restaurant + livreur), paiement CinetPay (page hébergée), webhook signé, split des
 virements mobile money à la livraison, vérification KYC des livreurs (upload de pièce
-d'identité, revue/approbation par un panel admin minimal).
+d'identité, revue/approbation par un panel admin minimal), journalisation structurée + piste
+d'audit financière, supervision admin des transactions en temps réel, réconciliation CinetPay
+par cron (voir §7).
 
 Pas fait (sprints suivants, voir le document d'architecture §9) : diffusion temps réel via
 Soketi/WebSocket (le front doit recharger pour voir un changement de statut), dispatch
