@@ -1,53 +1,25 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Panier — Ayo</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="./css/app.css">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0A0A0C">
-<link rel="icon" href="/assets/icons/favicon-32.png">
-<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-<script type="module" src="/js/register-sw.js"></script></head>
+<style>
+.checkout-intro{padding:18px 20px 4px}.checkout-intro h1{margin:0 0 5px;font:800 25px/1.15 'Bricolage Grotesque',sans-serif;letter-spacing:-.02em}.checkout-intro p{margin:0;color:var(--ink-dim);font-size:12px}.checkout-section-title{display:flex;align-items:center;gap:8px;margin:22px 20px 10px;font-size:14px;font-weight:700}.checkout-section-title span{display:flex;align-items:center;justify-content:center;width:25px;height:25px;border-radius:50%;background:var(--soft-green);color:var(--accent);font-size:11px}.address-card{display:flex;align-items:center;gap:12px}.address-card .address-icon{width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:12px;background:var(--soft-green);color:var(--accent)}.address-card .field{flex:1;padding:0!important}.delivery-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.delivery-choice label{display:flex;flex-direction:column;gap:3px;padding:11px;border:1px solid var(--line);border-radius:14px;background:var(--surface-alt);font-size:12px;font-weight:700;cursor:pointer}.delivery-choice label:has(input:checked){border-color:var(--accent);background:var(--soft-green)}.delivery-choice small{font-size:10px;color:var(--ink-dim);font-weight:400}.delivery-choice input{accent-color:var(--accent)}.promo-input{display:flex;gap:8px;margin-top:12px}.promo-input input{flex:1;min-width:0;background:var(--surface-alt);border:1px solid var(--line);border-radius:12px;padding:11px 12px;color:var(--ink);font:13px 'Sora',sans-serif}.promo-input button{padding:10px 13px;border-radius:12px;background:var(--surface-alt);border:1px solid var(--line);color:var(--accent);font:600 12px 'Sora',sans-serif}.checkout-note{margin:8px 4px 0;color:var(--ink-dim);font-size:11px;line-height:1.45}
+</style>
+<link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#0A0A0C"><link rel="icon" href="/assets/icons/favicon-32.png"><link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png"><script type="module" src="/js/register-sw.js"></script></head>
 <body>
-  <div class="topbar" style="border-bottom:1px solid var(--line);">
-    <a class="back-btn" href="/index.html" aria-label="Retour">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-    </a>
-    <div>
-      <div class="htitle">Ta commande</div>
-      <div class="hsub" id="restaurant-name"></div>
-    </div>
-  </div>
-
-  <div id="empty-state" class="content" hidden>
-    <p class="state-msg">Ton panier est vide.</p>
-    <a class="btn btn-ghost" href="/index.html">Découvrir des restaurants</a>
-  </div>
-
+  <div class="topbar" style="border-bottom:1px solid var(--line);"><a class="back-btn" href="/index.html" aria-label="Retour"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></a><div><div class="htitle">Finaliser la commande</div><div class="hsub" id="restaurant-name"></div></div></div>
+  <div id="empty-state" class="content" hidden><div style="font-size:42px;margin-bottom:10px">🛍️</div><h1 class="title">Ton panier est vide</h1><p class="state-msg">Découvre de nouvelles saveurs et ajoute ton premier article.</p><a class="btn btn-primary" href="/index.html">Découvrir les restaurants</a></div>
   <div id="cart-view" hidden>
-    <div class="cart-block" id="cart-lines"></div>
-
-    <div class="cart-block">
-      <div class="field" style="padding:10px 0;">
-        <label for="address">Adresse de livraison</label>
-        <input id="address" placeholder="Rue des Jardins, Cocody, Abidjan" required>
-      </div>
-    </div>
-
-    <div class="cart-block">
-      <div class="sumrow"><span>Sous-total</span><span id="sum-subtotal"></span></div>
-      <p class="state-msg" style="padding:0 4px;">Frais de livraison et TVA calculés à l'étape suivante.</p>
-    </div>
-
-    <div class="sticky-bar">
-      <button class="btn btn-primary btn-block" id="checkout-btn" type="button">Commander</button>
-      <p class="error-msg" id="checkout-error" hidden></p>
-    </div>
+    <div class="checkout-intro"><h1>Ta commande</h1><p>Vérifie les détails avant de passer au paiement.</p></div>
+    <h2 class="checkout-section-title"><span>1</span> Articles sélectionnés</h2><div class="cart-block" id="cart-lines"></div>
+    <h2 class="checkout-section-title"><span>2</span> Adresse et livraison</h2>
+    <div class="cart-block"><div class="address-card"><div class="address-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></div><div class="field"><label for="address">Adresse de livraison</label><input id="address" placeholder="Rue des Jardins, Cocody, Abidjan" required></div></div><div class="delivery-choice" aria-label="Type de livraison"><label><span><input type="radio" name="delivery-mode" value="standard" checked> Standard</span><small>25–40 min · recommandée</small></label><label><span><input type="radio" name="delivery-mode" value="express"> Express</span><small>15–25 min · prioritaire</small></label></div><p class="checkout-note">Ton adresse précise permet au livreur de te trouver rapidement.</p></div>
+    <h2 class="checkout-section-title"><span>3</span> Récapitulatif</h2><div class="cart-block"><div class="sumrow"><span>Sous-total</span><span id="sum-subtotal"></span></div><div class="sumrow"><span>Frais de livraison</span><span id="sum-delivery">Calculés ensuite</span></div><div class="sumrow total"><span>Total estimé</span><span id="sum-total"></span></div><div class="promo-input"><input id="promo-code" placeholder="Code promo" aria-label="Code promo"><button type="button" id="promo-btn">Appliquer</button></div><p class="state-msg" id="promo-message" hidden></p></div>
+    <div class="sticky-bar"><button class="btn btn-primary btn-block" id="checkout-btn" type="button">Continuer vers le paiement</button><p class="error-msg" id="checkout-error" hidden></p></div>
   </div>
-
   <script type="module" src="./js/pages/panier.js"></script>
 </body>
 </html>

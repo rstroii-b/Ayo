@@ -6,47 +6,21 @@
 <title>Restaurant — Ayo</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="./css/app.css">
-<style>body{position:relative;max-width:480px;}</style>
+<style>
+body{position:relative;max-width:480px}.restaurant-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}.restaurant-summary .summary-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:11px;font-weight:600;color:var(--ink-dim)}.restaurant-summary .summary-pill.rating{color:#ffd76a;background:rgba(255,198,60,.1);border-color:rgba(255,198,60,.2)}.menu-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 20px 4px}.menu-heading .sechead{margin:0}.menu-heading small{font-size:11px;color:var(--ink-dim)}
+</style>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0A0A0C">
 <link rel="icon" href="/assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
 <script type="module" src="/js/register-sw.js"></script></head>
 <body>
-  <div class="banner">
-    <div class="topbar">
-      <a class="back-btn" href="/index.html" aria-label="Retour" style="background:rgba(10,10,12,.55);backdrop-filter:blur(6px);">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-      </a>
-    </div>
-  </div>
-
-  <div class="content" id="restaurant-header" style="padding-top:14px;">
-    <p class="state-msg">Chargement…</p>
-  </div>
-
-  <div class="tabs">
-    <button class="tab active" type="button">Menu</button>
-  </div>
-
+  <div class="banner"><div class="topbar"><a class="back-btn" href="/index.html" aria-label="Retour" style="background:rgba(10,10,12,.55);backdrop-filter:blur(6px);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></a></div></div>
+  <main class="content" id="restaurant-header" style="padding-top:14px;"><p class="state-msg">Chargement…</p></main>
+  <div class="tabs" aria-label="Navigation du restaurant"><button class="tab active" type="button">Menu</button></div>
   <div class="menu-list" id="menu-list"></div>
-
-  <div class="sticky-bar" id="cart-bar" hidden>
-    <a class="btn btn-primary btn-block" id="cart-link" href="/panier.html">
-      <span id="cart-summary"></span>
-    </a>
-  </div>
-
-  <div class="item-modal-overlay" id="item-modal-overlay" hidden>
-    <div class="item-modal" role="dialog" aria-modal="true">
-      <button type="button" class="item-modal-close" id="item-modal-close" aria-label="Fermer">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
-      <div class="item-modal-photo" id="item-modal-photo"></div>
-      <div class="item-modal-body" id="item-modal-body"></div>
-    </div>
-  </div>
-
+  <div class="sticky-bar" id="cart-bar" hidden><a class="btn btn-primary btn-block" id="cart-link" href="/panier.html"><span id="cart-summary"></span></a></div>
+  <div class="item-modal-overlay" id="item-modal-overlay" hidden><div class="item-modal" role="dialog" aria-modal="true" aria-labelledby="item-modal-title"><button type="button" class="item-modal-close" id="item-modal-close" aria-label="Fermer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="item-modal-photo" id="item-modal-photo"></div><div class="item-modal-body" id="item-modal-body"></div></div></div>
   <script type="module" src="./js/pages/restaurant.js"></script>
 </body>
 </html>
