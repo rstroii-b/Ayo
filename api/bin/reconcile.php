@@ -85,7 +85,8 @@ foreach ($orders->fetchAll() as $order) {
 
     if ($status->isSuccessful()) {
         // Le webhook ne nous est jamais parvenu : c'est ce passage qui encaisse la commande.
-        if (PaymentLedger::markPaid((int) $order['id'], 'reconcile')) {
+        $paidCents = isset($status->raw['amount']) ? (int) round((float) $status->raw['amount'] * 100) : null;
+        if (PaymentLedger::markPaid((int) $order['id'], 'reconcile', $paidCents)) {
             ++$report['payments_settled'];
             Log::app()->warning('reconcile.missed_payment_webhook', [
                 'order_id' => (int) $order['id'],

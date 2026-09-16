@@ -78,7 +78,7 @@ final class PaymentController
                 amount: intdiv((int) $order['total_cents'], 100),
                 successUrl: "{$frontUrl}/suivi.html?order={$order['id']}",
                 failedUrl: "{$frontUrl}/suivi.html?order={$order['id']}&payment=failed",
-                notifyUrl: "{$apiUrl}/webhooks/cinetpay",
+                notifyUrl: "{$apiUrl}/api/v1/webhooks/cinetpay",
                 language: CinetPayLanguage::French,
                 designation: "Commande Ayo #{$order['id']}",
                 clientFirstName: $order['first_name'],
@@ -177,7 +177,9 @@ final class PaymentController
         // PaymentLedger porte l'idempotence : CinetPay rejoue ses notifications, et le script
         // de réconciliation peut arriver en même temps sur la même transaction.
         if ($confirmed->isSuccessful()) {
-            PaymentLedger::markPaid($orderId, 'webhook');
+            // Montant réellement débité (réponse canonique CinetPay, XOF entier → cents internes ×100).
+            $paidCents = isset($confirmed->payment->raw['amount']) ? (int) round((float) $confirmed->payment->raw['amount'] * 100) : null;
+            PaymentLedger::markPaid($orderId, 'webhook', $paidCents);
         } elseif ($confirmed->isFinal()) {
             PaymentLedger::markPaymentFailed($orderId, 'webhook', $confirmed->payment->status);
         }

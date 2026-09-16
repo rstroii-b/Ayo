@@ -55,14 +55,16 @@ final class OrderController
 
         $db = Database::connection();
 
-        $existing = $db->prepare('SELECT id, status, total_cents FROM orders WHERE idempotency_key = ?');
-        $existing->execute([$idempotencyKey]);
+        $body = (array) $request->getParsedBody();
+        $clientId = (int) $request->getAttribute('user_id');
+
+        // Idempotence cloisonnée par client (L-2) : la clé d'un tiers ne doit ni révéler sa commande
+        // ni pouvoir être « brûlée » pour bloquer la sienne.
+        $existing = $db->prepare('SELECT id, status, total_cents FROM orders WHERE idempotency_key = ? AND client_id = ?');
+        $existing->execute([$idempotencyKey, $clientId]);
         if (($order = $existing->fetch()) !== false) {
             return JsonResponse::ok($response, $order, 200);
         }
-
-        $body = (array) $request->getParsedBody();
-        $clientId = (int) $request->getAttribute('user_id');
 
         if (empty($body['restaurant_id']) || empty($body['items']) || empty($body['delivery_address'])) {
             return JsonResponse::error($response, 422, 'restaurant_id, items et delivery_address sont requis');
@@ -291,6 +293,8 @@ final class OrderController
             return JsonResponse::error($response, 404, 'Commande introuvable');
         }
 
+        $userId = (int) $request->getAttribute('user_id');
+
         $items = Database::connection()->prepare(
             'SELECT oi.menu_item_id, mi.name, oi.quantity, oi.price_cents, oi.options_json
              FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id WHERE oi.order_id = ?'
@@ -302,6 +306,13 @@ final class OrderController
         // qui authentifie les webhooks de paiement. L'exposer au client permettrait de forger
         // une confirmation de paiement — il ne sort jamais de l'API.
         unset($order['cinetpay_notify_token']);
+
+        // L-1 : les champs internes de paiement (lien CinetPay actif, clé d'idempotence, intent)
+        // ne concernent que le client. Un restaurateur ou un livreur, bien que parties à la commande,
+        // n'ont pas à les recevoir.
+        if ($userId !== (int) $order['client_id']) {
+            unset($order['payment_intent_id'], $order['cinetpay_payment_url'], $order['idempotency_key']);
+        }
 
         if ($order['driver_id'] !== null) {
             $driver = Database::connection()->prepare(

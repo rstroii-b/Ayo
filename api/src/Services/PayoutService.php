@@ -122,7 +122,7 @@ final class PayoutService
                 amount: intdiv($amountCents, 100),
                 paymentMethod: $operator,
                 reason: "Commande Ayo #{$orderId}",
-                notifyUrl: "{$apiUrl}/webhooks/cinetpay",
+                notifyUrl: "{$apiUrl}/api/v1/webhooks/cinetpay",
             ));
         } catch (\Throwable $e) {
             Log::app()->error('cinetpay.transfer_failed', [

@@ -1,11 +1,12 @@
 import { login } from '../auth.js';
+import { safeInternalPath } from '../format.js';
 import { webauthnSupported, loginWithPasskey } from '../webauthn.js';
 
 const ROLE_HOME = { restaurant_owner: '/backoffice.html', driver: '/driver.html', admin: '/admin.html' };
 
 function redirectAfterLogin(role) {
   const params = new URLSearchParams(window.location.search);
-  window.location.href = params.get('next') ?? ROLE_HOME[role] ?? '/index.html';
+  window.location.href = safeInternalPath(params.get('next'), ROLE_HOME[role] ?? '/index.html');
 }
 
 document.getElementById('login-form').addEventListener('submit', async (event) => {

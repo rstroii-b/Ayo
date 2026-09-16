@@ -29,3 +29,18 @@ export function safeImageUrl(url) {
 
   return null;
 }
+
+/**
+ * N'autorise qu'un chemin interne (même origine) comme cible de redirection après connexion.
+ * Un `?next=javascript:...` ou `?next=//evil.example` fournis dans l'URL provoquaient sinon une
+ * exécution de script (DOM-XSS) ou un open redirect. On exige un chemin absolu du site, jamais
+ * un schéma ni une origine externe.
+ */
+export function safeInternalPath(value, fallback = '/index.html') {
+  if (typeof value !== 'string') return fallback;
+  // Doit commencer par un seul "/", ne pas être protocol-relative "//", ni contenir ":" ou retour arrière.
+  if (!/^\/[^/\\]/.test(value)) return fallback;
+  if (value.includes('://') || value.includes('\\')) return fallback;
+
+  return value;
+}

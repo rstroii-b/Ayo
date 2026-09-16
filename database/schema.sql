@@ -16,6 +16,9 @@ CREATE TABLE users (
   first_name        VARCHAR(100) NOT NULL,
   last_name         VARCHAR(100) NOT NULL,
   role              ENUM('client','restaurant_owner','driver','admin') NOT NULL,
+  -- Compte désactivable (M-3) : un compte inactif ne peut plus se connecter ni renouveler son
+  -- jeton, ce qui coupe l'accès dans la durée de vie du jeton (30 min) sans rotation de secret.
+  is_active         TINYINT(1) NOT NULL DEFAULT 1,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_users_email (email)
@@ -160,7 +163,8 @@ CREATE TABLE orders (
   ready_at            DATETIME NULL,
   picked_up_at        DATETIME NULL,
   delivered_at        DATETIME NULL,
-  UNIQUE KEY uq_orders_idempotency (idempotency_key),
+  -- Unicité composite (L-2) : la même clé chez deux clients distincts ne doit pas se percuter.
+  UNIQUE KEY uq_orders_idempotency (client_id, idempotency_key),
   KEY ix_orders_restaurant_status (restaurant_id, status),
   KEY ix_orders_driver_status (driver_id, status),
   KEY ix_orders_client (client_id),

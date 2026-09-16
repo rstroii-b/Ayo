@@ -27,9 +27,34 @@ final class PaymentLedger
      *
      * @return bool true si c'est bien cette confirmation qui a fait basculer la commande
      */
-    public static function markPaid(int $orderId, string $source): bool
+    public static function markPaid(int $orderId, string $source, ?int $paidAmountCents = null): bool
     {
         $db = Database::connection();
+
+        // Rapprochement de montant (M-4) : le montant réellement encaissé chez CinetPay doit
+        // correspondre au total figé de la commande. Un encaissement partiel (ou un intent réutilisé)
+        // ne doit pas rendre la commande éligible aux virements. On refuse et on alerte plutôt que
+        // de marquer payé en silence.
+        if ($paidAmountCents !== null) {
+            $expected = (int) ($db->query("SELECT total_cents FROM orders WHERE id = " . (int) $orderId)->fetchColumn() ?: 0);
+            if ($paidAmountCents < $expected) {
+                Log::transactions()->error('payment.amount_mismatch', [
+                    'order_id' => $orderId,
+                    'expected_cents' => $expected,
+                    'paid_cents' => $paidAmountCents,
+                    'source' => $source,
+                ]);
+                Realtime::notifyAdmins('payment', [
+                    'order_id' => $orderId,
+                    'payment_status' => 'amount_mismatch',
+                    'expected_cents' => $expected,
+                    'paid_cents' => $paidAmountCents,
+                    'source' => $source,
+                ]);
+
+                return false;
+            }
+        }
 
         $update = $db->prepare(
             "UPDATE orders SET payment_status = 'paid', paid_at = NOW()

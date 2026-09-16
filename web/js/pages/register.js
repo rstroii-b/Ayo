@@ -1,3 +1,4 @@
+import { safeInternalPath } from '../format.js';
 import { register } from '../auth.js';
 
 let selectedRole = 'client';
@@ -41,7 +42,7 @@ document.getElementById('register-form').addEventListener('submit', async (event
     await register(payload);
     const params = new URLSearchParams(window.location.search);
     const roleHome = { restaurant_owner: '/backoffice.html', driver: '/driver.html' }[selectedRole] ?? '/index.html';
-    window.location.href = params.get('next') ?? roleHome;
+    window.location.href = safeInternalPath(params.get('next'), roleHome);
   } catch (error) {
     errorEl.textContent = error.detail ?? error.message;
     errorEl.hidden = false;

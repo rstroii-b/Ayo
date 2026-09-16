@@ -27,9 +27,14 @@ final class PushController
             return JsonResponse::error($response, 422, "Abonnement push invalide");
         }
 
+        // L-5 : la clé unique porte sur endpoint seul. On ne réassigne JAMAIS user_id sur conflit —
+        // sinon un compte pouvait « voler » l'endpoint push d'un autre en le soumettant, détournant
+        // ses notifications de commande. On ne met à jour les clés que si l'abonnement lui appartient.
         Database::connection()->prepare(
             'INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), p256dh = VALUES(p256dh), auth = VALUES(auth)'
+             ON DUPLICATE KEY UPDATE
+                p256dh = IF(user_id = VALUES(user_id), VALUES(p256dh), p256dh),
+                auth   = IF(user_id = VALUES(user_id), VALUES(auth), auth)'
         )->execute([
             $request->getAttribute('user_id'),
             $body['endpoint'],
