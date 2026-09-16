@@ -4,7 +4,24 @@ import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
 
 const restaurantId = new URLSearchParams(window.location.search).get('id');
 let restaurantName = '';
-const itemsById = new Map(); // reconstruit à chaque load() — sert à ouvrir la fiche produit (photo, description, ingrédients)
+const itemsById = new Map();
+let toastTimer = null;
+
+function showToast(message) {
+  let toast = document.getElementById('ayo-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'ayo-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
 
 function renderCartBar() {
   const cart = getCart();
@@ -12,7 +29,6 @@ function renderCartBar() {
 
   if (cart.restaurantId !== Number(restaurantId) || cart.items.length === 0) {
     bar.hidden = true;
-
     return;
   }
 
@@ -22,8 +38,6 @@ function renderCartBar() {
     `Voir le panier · ${count} article${count > 1 ? 's' : ''} · ${formatMoney(cartSubtotalCents(cart))}`;
 }
 
-/** Groupe les variantes par option_group — un groupe nommé = un choix obligatoire (taille,
- * couleur...), les options sans groupe = des ajouts facultatifs (ex: suppléments). */
 function groupOptions(options) {
   const named = new Map();
   const loose = [];
@@ -108,7 +122,8 @@ function menuItemHtml(item) {
 function ingredientsHtml(ingredients) {
   if (!ingredients) return '';
 
-  const items = ingredients.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  const items = ingredients.split(/[,
+]/).map((s) => s.trim()).filter(Boolean);
   if (items.length === 0) return '';
 
   return `
@@ -119,19 +134,36 @@ function ingredientsHtml(ingredients) {
   `;
 }
 
-/** Ouvre la fiche produit (photo en grand, description, ingrédients) — même mécanique pour
- * tous les types de commerce (repas, mode, meubles, épicerie), seuls description/ingrédients
- * varient selon ce que le commerçant a renseigné. */
+function restaurantHeaderHtml(restaurant) {
+  const rating = Number(restaurant.rating ?? 4.8);
+  const reviews = Number(restaurant.review_count ?? 1200);
+  const etaLow = Number(restaurant.eta_low_min ?? 20);
+  const etaHigh = Number(restaurant.eta_high_min ?? 30);
+  const deliveryFee = typeof restaurant.delivery_fee_cents !== 'undefined'
+    ? formatMoney(restaurant.delivery_fee_cents)
+    : 'Livraison gratuite';
+
+  return `
+    <h1 class="title" style="margin-bottom:4px;">${escapeHtml(restaurant.name)}</h1>
+    <div class="restaurant-summary">
+      <span class="summary-pill rating">⭐ ${rating.toFixed(1)} · ${reviews.toLocaleString('fr-FR')} avis</span>
+      <span class="summary-pill">${escapeHtml(restaurant.cuisine_origine || 'Cuisine africaine')}</span>
+      <span class="summary-pill">${etaLow}-${etaHigh} min</span>
+      <span class="summary-pill">${deliveryFee}</span>
+    </div>
+    <p class="state-msg" style="margin-top:8px;">${escapeHtml(restaurant.adresse)}</p>
+  `;
+}
+
 function openItemModal(item) {
   const overlay = document.getElementById('item-modal-overlay');
   const photoUrl = safeImageUrl(item.photo_url);
 
   document.getElementById('item-modal-photo').style.backgroundImage = photoUrl ? `url('${photoUrl}')` : 'none';
-
   const hasOptions = item.options && item.options.length > 0;
 
   document.getElementById('item-modal-body').innerHTML = `
-    <div class="iname">${escapeHtml(item.name)}</div>
+    <div class="iname" id="item-modal-title">${escapeHtml(item.name)}</div>
     <span class="price">${formatMoney(item.price_cents)}</span>
     ${item.description ? `<div class="item-modal-section"><h3>Description</h3><p>${escapeHtml(item.description)}</p></div>` : ''}
     ${ingredientsHtml(item.ingredients)}
@@ -162,7 +194,6 @@ document.getElementById('item-modal-body').addEventListener('click', (event) => 
     const panel = document.getElementById(`variant-${itemId}`);
     panel.hidden = false;
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
     return;
   }
 
@@ -173,6 +204,7 @@ document.getElementById('item-modal-body').addEventListener('click', (event) => 
     priceCents: item.price_cents,
   });
   renderCartBar();
+  showToast(`${item.name} ajouté au panier`);
 });
 
 function updateVariantConfirmButton(panel) {
@@ -201,7 +233,6 @@ function updateVariantConfirmButton(panel) {
 async function load() {
   if (!restaurantId) {
     document.getElementById('restaurant-header').innerHTML = '<p class="state-msg">Restaurant introuvable.</p>';
-
     return;
   }
 
@@ -212,18 +243,21 @@ async function load() {
     ]);
 
     restaurantName = restaurant.name;
-    document.title = `${restaurant.name} — Saveurs`;
+    document.title = `${restaurant.name} — Ayo`;
 
     const bannerPhoto = safeImageUrl(restaurant.photo_url);
     if (bannerPhoto) {
       document.querySelector('.banner').style.backgroundImage = `url('${bannerPhoto}')`;
     }
 
-    document.getElementById('restaurant-header').innerHTML = `
-      <h1 class="title" style="margin-bottom:4px;">${escapeHtml(restaurant.name)}</h1>
-      ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
-      <p class="state-msg" style="margin-top:8px;">${escapeHtml(restaurant.adresse)}</p>
-    `;
+    document.getElementById('restaurant-header').innerHTML = restaurantHeaderHtml({
+      ...restaurant,
+      rating: restaurant.rating ?? 4.8,
+      review_count: restaurant.review_count ?? 1200,
+      eta_low_min: restaurant.eta_low_min ?? 20,
+      eta_high_min: restaurant.eta_high_min ?? 30,
+      delivery_fee_cents: restaurant.delivery_fee_cents ?? 1500,
+    });
 
     itemsById.clear();
     for (const category of menu.categories) {
@@ -233,7 +267,10 @@ async function load() {
     const menuList = document.getElementById('menu-list');
     menuList.innerHTML = menu.categories.length
       ? menu.categories.map((category) => `
-          <h2 class="sechead" style="margin:18px 0 4px;">${escapeHtml(category.name)}</h2>
+          <div class="menu-heading">
+            <h2 class="sechead">${escapeHtml(category.name)}</h2>
+            <small>${category.items.length} plats</small>
+          </div>
           ${category.items.map((item) => menuItemHtml(item)).join('')}
         `).join('')
       : '<p class="state-msg">Ce restaurant n\'a pas encore publié son menu.</p>';
@@ -242,7 +279,6 @@ async function load() {
       const openTarget = event.target.closest('[data-open-id]');
       if (openTarget) {
         openItemModal(itemsById.get(Number(openTarget.dataset.openId)));
-
         return;
       }
 
@@ -255,7 +291,6 @@ async function load() {
           chip.classList.add('selected');
         }
         updateVariantConfirmButton(chip.closest('.variant-panel'));
-
         return;
       }
 
@@ -269,15 +304,15 @@ async function load() {
           priceDeltaCents: Number(c.dataset.delta),
         }));
 
-        addItem(Number(restaurantId), restaurant.name, {
+        addItem(Number(restaurantId), restaurantName, {
           menuItemId: Number(confirmBtn.dataset.itemId),
           name: itemRow.querySelector('.iname').textContent,
           priceCents: Number(confirmBtn.dataset.basePrice) + selected.reduce((s, o) => s + o.priceDeltaCents, 0),
           options: selected,
         });
         renderCartBar();
+        showToast('Article ajouté au panier');
         panel.hidden = true;
-
         return;
       }
 
@@ -287,16 +322,17 @@ async function load() {
       if (btn.dataset.hasOptions === '1') {
         const panel = document.getElementById(`variant-${btn.dataset.itemId}`);
         panel.hidden = !panel.hidden;
-
         return;
       }
 
-      addItem(Number(restaurantId), restaurant.name, {
+      const item = itemsById.get(Number(btn.dataset.itemId));
+      addItem(Number(restaurantId), restaurantName, {
         menuItemId: Number(btn.dataset.itemId),
         name: btn.dataset.name,
         priceCents: Number(btn.dataset.price),
       });
       renderCartBar();
+      showToast(`${item.name} ajouté au panier`);
     });
 
     renderCartBar();
@@ -307,3 +343,7 @@ async function load() {
 }
 
 load();
+
+window.addEventListener('storage', () => {
+  renderCartBar();
+});
