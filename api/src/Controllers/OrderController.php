@@ -145,12 +145,33 @@ final class OrderController
             $orderItems[] = [$menuItemId, $quantity, $unitPriceCents, json_encode($selectedOptions)];
         }
 
+        // Coordonnées de livraison (H-2) : elles sont fournies par le client et servent à calculer
+        // les frais. On refuse d'abord les valeurs hors de la zone de service (bounding box du pays)
+        // — sans ça, un client envoyait des coordonnées absurdes pour gonfler ou écraser les frais.
+        if (!is_array($address) || !isset($address['lat'], $address['lng'])
+            || !is_numeric($address['lat']) || !is_numeric($address['lng'])) {
+            return JsonResponse::error($response, 422, 'Coordonnées de livraison requises');
+        }
+
+        $lat = (float) $address['lat'];
+        $lng = (float) $address['lng'];
+        if (!$this->withinServiceArea($lat, $lng)) {
+            return JsonResponse::error($response, 422, 'Adresse hors zone de livraison');
+        }
+
         $distanceKm = $this->haversineKm(
             (float) $restaurant['lat'],
             (float) $restaurant['lng'],
-            (float) $address['lat'],
-            (float) $address['lng']
+            $lat,
+            $lng
         );
+
+        // Borne de service : au-delà, la commande est refusée plutôt que facturée à un montant
+        // délirant (et empêche aussi le calcul de partir en overflow sur des coordonnées forgées).
+        $maxKm = (float) ($_ENV['MAX_DELIVERY_KM'] ?? 40);
+        if ($distanceKm > $maxKm) {
+            return JsonResponse::error($response, 422, 'Adresse trop éloignée', "La livraison ne dépasse pas {$maxKm} km.");
+        }
 
         // Repli si le restaurant n'a pas de zone_id assigné — mêmes valeurs que le seed Abidjan
         // (voir database/schema.sql), pour rester à l'échelle XOF plutôt qu'un repli EUR-cents.
@@ -174,7 +195,7 @@ final class OrderController
             );
             $orderStmt->execute([
                 $clientId, $restaurantId, $subtotalCents, $deliveryFeeCents, $tvaCents, $totalCents,
-                $idempotencyKey, $address['label'] ?? '', $address['lat'], $address['lng'], $body['note'] ?? null,
+                $idempotencyKey, $address['label'] ?? '', $lat, $lng, $body['note'] ?? null,
             ]);
             $orderId = (int) $db->lastInsertId();
 
@@ -316,6 +337,14 @@ final class OrderController
             );
         }
 
+        // Garde-fou paiement (H-1) : une commande n'entre en production que si elle est encaissée.
+        // Le restaurant ne peut pas l'accepter tant que payment_status !== 'paid'. Sans ce point de
+        // contrôle, un client (ou un restaurateur complice) faisait préparer et livrer une commande
+        // jamais payée, puis déclenchait les virements à la livraison.
+        if ($role === 'restaurant' && $nextStatus === 'accepted' && ($order['payment_status'] ?? 'unpaid') !== 'paid') {
+            return JsonResponse::error($response, 409, 'Commande non encaissée', "Le paiement de cette commande n'a pas été confirmé.");
+        }
+
         $db = Database::connection();
         $timestampColumn = [
             'accepted' => 'accepted_at',
@@ -324,7 +353,11 @@ final class OrderController
             'delivered' => 'delivered_at',
         ][$nextStatus] ?? null;
 
-        $sql = 'UPDATE orders SET status = ?' . ($timestampColumn ? ", {$timestampColumn} = NOW()" : '') . ' WHERE id = ?';
+        // UPDATE conditionné à l'état lu (M-1) : deux requêtes concurrentes ("delivered" x2) lisaient
+        // toutes deux l'ancien statut et déclenchaient chacune les virements. Le WHERE ... AND status
+        // garantit qu'une seule transition passe ; rowCount() === 0 => quelqu'un est passé avant.
+        $sql = 'UPDATE orders SET status = ?' . ($timestampColumn ? ", {$timestampColumn} = NOW()" : '')
+            . ' WHERE id = ? AND status = ?';
 
         // Transaction : le changement de statut et sa trace dans order_events doivent réussir
         // ensemble, sinon la commande se retrouve dans un état muet (statut changé, aucun
@@ -332,7 +365,15 @@ final class OrderController
         $db->beginTransaction();
 
         try {
-            $db->prepare($sql)->execute([$nextStatus, $order['id']]);
+            $update = $db->prepare($sql);
+            $update->execute([$nextStatus, $order['id'], $order['status']]);
+
+            if ($update->rowCount() === 0) {
+                $db->rollBack();
+
+                return JsonResponse::error($response, 409, 'Commande déjà modifiée', 'Un autre acteur a déjà fait évoluer cette commande.');
+            }
+
             $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, ?, ?)')
                 ->execute([$order['id'], $nextStatus, $role]);
             $db->commit();
@@ -423,8 +464,21 @@ final class OrderController
         $db = Database::connection();
         $driverId = (int) $request->getAttribute('user_id');
 
+        // KYC opposable (M-2) : seul un livreur vérifié peut prendre une course. La jointure dans
+        // l'UPDATE atomique évite qu'un livreur tout juste inscrit (kyc_status='pending', aucune
+        // pièce d'identité fournie) capture des commandes et se fasse payer sans être identifié.
+        $kyc = $db->prepare('SELECT kyc_status FROM driver_profiles WHERE user_id = ?');
+        $kyc->execute([$driverId]);
+        if ($kyc->fetchColumn() !== 'verified') {
+            return JsonResponse::error($response, 403, 'Compte livreur non vérifié', "Votre pièce d'identité doit être validée avant de prendre des courses.");
+        }
+
         $stmt = $db->prepare(
-            "UPDATE orders SET driver_id = ? WHERE id = ? AND status = 'ready_for_pickup' AND driver_id IS NULL"
+            "UPDATE orders o
+                JOIN driver_profiles dp ON dp.user_id = ?
+                SET o.driver_id = dp.user_id
+              WHERE o.id = ? AND o.status = 'ready_for_pickup' AND o.driver_id IS NULL
+                AND dp.kyc_status = 'verified'"
         );
         $stmt->execute([$driverId, $routeArgs['id']]);
 
@@ -676,5 +730,22 @@ final class OrderController
         $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
 
         return $earthRadiusKm * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
+    /**
+     * Bounding box de la zone de service (Côte d'Ivoire par défaut, surchargeable en .env). C'est un
+     * garde-fou grossier mais robuste hors-ligne : il rejette les coordonnées manifestement fausses
+     * (autre continent, (0,0), pôles) qui servaient à manipuler les frais de livraison. La validation
+     * fine « le libellé correspond-il aux coordonnées ? » relève du géocodage (à brancher en prod) et,
+     * en attendant, de la détection de fraude (écart libellé/coordonnées).
+     */
+    private function withinServiceArea(float $lat, float $lng): bool
+    {
+        $minLat = (float) ($_ENV['SERVICE_MIN_LAT'] ?? 4.0);
+        $maxLat = (float) ($_ENV['SERVICE_MAX_LAT'] ?? 11.0);
+        $minLng = (float) ($_ENV['SERVICE_MIN_LNG'] ?? -9.0);
+        $maxLng = (float) ($_ENV['SERVICE_MAX_LNG'] ?? -2.0);
+
+        return $lat >= $minLat && $lat <= $maxLat && $lng >= $minLng && $lng <= $maxLng;
     }
 }

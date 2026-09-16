@@ -221,6 +221,8 @@ CREATE TABLE payouts (
   KEY ix_payouts_restaurant (restaurant_id),
   KEY ix_payouts_order (order_id),
   KEY ix_payouts_statut (statut, created_at),
+  -- Filet anti-double-virement (M-1) : au plus une ligne par bénéficiaire et par commande.
+  UNIQUE KEY uq_payouts_order_recipient (order_id, recipient_type),
   CONSTRAINT fk_payout_driver FOREIGN KEY (driver_id) REFERENCES users(id),
   CONSTRAINT fk_payout_restaurant FOREIGN KEY (restaurant_id) REFERENCES restaurants(id),
   CONSTRAINT fk_payout_order FOREIGN KEY (order_id) REFERENCES orders(id)

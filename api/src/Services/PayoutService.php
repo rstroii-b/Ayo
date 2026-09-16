@@ -24,7 +24,7 @@ final class PayoutService
         $db = Database::connection();
 
         $stmt = $db->prepare(
-            'SELECT o.subtotal_cents, o.delivery_fee_cents, o.driver_id,
+            'SELECT o.subtotal_cents, o.delivery_fee_cents, o.driver_id, o.payment_status,
                     r.id AS restaurant_id,
                     r.mobile_money_operator AS restaurant_mm_operator,
                     r.mobile_money_number AS restaurant_mm_number,
@@ -41,6 +41,30 @@ final class PayoutService
 
         if ($order === false) {
             Log::app()->error('payout.order_not_found', ['order_id' => $orderId]);
+
+            return;
+        }
+
+        // Garde-fou de dernier ressort (H-1) : jamais de virement pour une commande non encaissée,
+        // même si un appelant oubliait le contrôle en amont. La perte financière la plus grave de
+        // l'app passait précisément par ce chemin.
+        if (($order['payment_status'] ?? 'unpaid') !== 'paid') {
+            Log::transactions()->error('payout.blocked_unpaid', [
+                'order_id' => $orderId,
+                'payment_status' => $order['payment_status'] ?? null,
+            ]);
+
+            return;
+        }
+
+        // Idempotence en amont de tout appel CinetPay (M-1) : si des virements existent déjà pour
+        // cette commande, on ne rejoue rien. C'est la vraie protection — la contrainte unique
+        // uq_payouts_order_recipient n'est que le dernier filet, et elle se déclencherait APRÈS
+        // que l'argent soit parti.
+        $already = $db->prepare('SELECT COUNT(*) FROM payouts WHERE order_id = ?');
+        $already->execute([$orderId]);
+        if ((int) $already->fetchColumn() > 0) {
+            Log::app()->info('payout.already_released', ['order_id' => $orderId]);
 
             return;
         }
