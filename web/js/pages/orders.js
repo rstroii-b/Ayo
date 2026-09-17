@@ -1,39 +1,30 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
 import { formatMoney, escapeHtml } from '../format.js';
+import { statusLabel, statusTone } from '../status.js';
+import { renderEmpty, renderError, renderLoading } from '../ui.js';
 
-const STATUS_LABELS = {
-  pending: 'Envoyée',
-  accepted: 'Acceptée',
-  preparing: 'En préparation',
-  ready_for_pickup: 'Prête',
-  picked_up: 'Récupérée',
-  delivering: 'En route',
-  delivered: 'Livrée',
-  cancelled: 'Annulée',
-};
-
-const STATUS_COLOR = {
-  delivered: 'var(--ink-dim)',
-  cancelled: 'var(--chili)',
-  ready_for_pickup: 'var(--herb)',
-  picked_up: 'var(--herb)',
-  delivering: 'var(--herb)',
-};
+// Les libellés et les couleurs de statut ne sont plus redéfinis ici : web/js/status.js en est
+// la seule source, partagée avec l'accueil, le suivi et le back-office. Trois écrans
+// nommaient différemment le même état de commande.
 
 function orderRowHtml(order) {
-  const date = new Date(order.created_at.replace(' ', 'T'));
-  const color = STATUS_COLOR[order.status] ?? 'var(--ink)';
+  // MySQL renvoie « 2026-09-17 14:32:00 » ; Safari refuse ce format sans le « T ». Une date
+  // invalide donnait « Invalid Date » dans la liste des commandes sur iPhone.
+  const date = new Date(String(order.created_at ?? '').replace(' ', 'T'));
+  const dateLabel = Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   return `
     <a class="rcard" href="/suivi.html?order=${order.id}" style="align-items:center;">
       <div class="cline-info">
         <div class="cline-name">${escapeHtml(order.restaurant_name)}</div>
-        <span class="state-msg">${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+        ${dateLabel ? `<span class="field-hint">${escapeHtml(dateLabel)}</span>` : ''}
       </div>
       <div style="text-align:right;">
         <div class="price">${formatMoney(order.total_cents)}</div>
-        <span style="font-size:11.5px;font-weight:600;color:${color};">${STATUS_LABELS[order.status] ?? order.status}</span>
+        <span class="status-badge" data-tone="${escapeHtml(statusTone(order.status))}">${escapeHtml(statusLabel(order.status))}</span>
       </div>
     </a>
   `;
@@ -41,18 +32,26 @@ function orderRowHtml(order) {
 
 async function load() {
   const content = document.getElementById('orders-content');
+  renderLoading(content, 3);
 
   try {
     const { orders } = await apiFetch('/orders/mine');
 
-    content.innerHTML = orders.length
-      ? `<div class="rlist">${orders.map(orderRowHtml).join('')}</div>`
-      : `
-        <p class="state-msg">Tu n'as pas encore passé de commande.</p>
-        <a class="btn btn-primary" href="/index.html" style="margin-top:12px;">Découvrir des restaurants</a>
-      `;
+    if (orders.length === 0) {
+      renderEmpty(content, {
+        icon: '🧾',
+        title: 'Aucune commande pour l\'instant',
+        text: 'Tes commandes et leur suivi apparaîtront ici.',
+        action: { label: 'Découvrir les commerces', href: '/index.html' },
+      });
+
+      return;
+    }
+
+    content.removeAttribute('aria-busy');
+    content.innerHTML = `<div class="rlist">${orders.map(orderRowHtml).join('')}</div>`;
   } catch (error) {
-    content.innerHTML = `<p class="state-msg">Impossible de charger tes commandes (${error.message}).</p>`;
+    renderError(content, error, { title: 'Impossible de charger tes commandes', onRetry: load });
   }
 }
 

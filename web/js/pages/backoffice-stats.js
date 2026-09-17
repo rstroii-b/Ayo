@@ -1,6 +1,7 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { formatMoney, escapeHtml } from '../format.js';
+import { renderError } from '../ui.js';
 
 
 if (requireLogin('/backoffice-stats.html')) {
@@ -21,7 +22,7 @@ async function init() {
     if (error.status === 404) {
       window.location.href = '/backoffice.html';
     } else {
-      document.getElementById('stats-content').innerHTML = `<p class="state-msg">${error.message}</p>`;
+      renderError(document.getElementById('stats-content'), error, { onRetry: init });
     }
   }
 }

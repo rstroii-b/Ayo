@@ -58,9 +58,17 @@ final class AdminController
             return JsonResponse::error($response, 404, 'Document introuvable');
         }
 
-        $response->getBody()->write(file_get_contents($fullPath));
+        $response->getBody()->write((string) file_get_contents($fullPath));
 
-        return $response->withHeader('Content-Type', KycStorage::contentType($path));
+        // Le document est servi en pièce jointe, jamais rendu dans l'onglet : une pièce
+        // d'identité au format PDF peut embarquer du script, et le visualiseur intégré
+        // l'exécuterait sur l'origine de l'API, session admin ouverte. `nosniff` empêche par
+        // ailleurs le navigateur de « deviner » un autre type que celui annoncé.
+        return $response
+            ->withHeader('Content-Type', KycStorage::contentType($path))
+            ->withHeader('Content-Disposition', 'attachment; filename="kyc-' . (int) $routeArgs['id'] . '"')
+            ->withHeader('X-Content-Type-Options', 'nosniff')
+            ->withHeader('Cache-Control', 'no-store');
     }
 
     /** PATCH /admin/drivers/{id}/kyc — body {status: verified|rejected, reason?} */
@@ -80,12 +88,20 @@ final class AdminController
             return JsonResponse::error($response, 404, 'Livreur introuvable');
         }
 
-        $db->prepare('UPDATE driver_profiles SET kyc_status = ?, kyc_rejection_reason = ? WHERE user_id = ?')
-            ->execute([
-                $status,
-                $status === 'rejected' ? ($body['reason'] ?? null) : null,
-                $routeArgs['id'],
-            ]);
+        $reason = null;
+        if ($status === 'rejected') {
+            $reason = isset($body['reason']) && is_string($body['reason'])
+                ? mb_substr(trim($body['reason']), 0, 255)
+                : null;
+        }
+
+        // Un refus remet aussi le livreur hors ligne : sans cela, un compte déjà en ligne au
+        // moment du refus restait dans la file de dispatch jusqu'à sa prochaine déconnexion.
+        $db->prepare(
+            'UPDATE driver_profiles SET kyc_status = ?, kyc_rejection_reason = ?,
+                    is_online = IF(? = \'verified\', is_online, 0)
+             WHERE user_id = ?'
+        )->execute([$status, $reason, $status, (int) $routeArgs['id']]);
 
         return JsonResponse::ok($response, ['status' => $status]);
     }

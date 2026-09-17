@@ -3,19 +3,13 @@ import { requireLogin } from '../auth.js';
 import { formatMoney, escapeHtml } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
 import { realtimeClient } from '../realtime.js';
+import { paymentStatusLabel, statusLongLabel } from '../status.js';
+import { renderError } from '../ui.js';
 
 const orderId = new URLSearchParams(window.location.search).get('order');
 
-const STATUS_LABELS = {
-  pending: 'Commande envoyée au restaurant',
-  accepted: 'Commande acceptée',
-  preparing: 'En préparation',
-  ready_for_pickup: 'Prête, en attente d\'un livreur',
-  picked_up: 'Récupérée par le livreur',
-  delivering: 'Le livreur est en route',
-  delivered: 'Livrée — bon appétit !',
-  cancelled: 'Commande annulée',
-};
+// Libellés de statut : voir web/js/status.js (source unique, partagée avec l'accueil,
+// l'historique et le back-office).
 
 // Estimation grossière par statut (pas de position GPS live remontée au client) — affichée
 // comme fourchette approximative, jamais comme promesse. Progress (0–1) positionne le point
@@ -59,7 +53,7 @@ function renderStatusHeader(order) {
     header.innerHTML = `
       <div class="eta-block">
         <div class="eta-label">Commande #${order.id}</div>
-        <div class="eta-status" style="color:var(--chili);font-size:16px;">Commande annulée</div>
+        <div class="eta-status" style="color:var(--chili);font-size:16px;">${escapeHtml(statusLongLabel('cancelled'))}</div>
       </div>
     `;
     document.getElementById('route-block').hidden = true;
@@ -71,7 +65,7 @@ function renderStatusHeader(order) {
     header.innerHTML = `
       <div class="eta-block">
         <div class="eta-label">Commande #${order.id}</div>
-        <div class="eta-status" style="color:var(--herb);font-size:16px;">Livrée — bon appétit !</div>
+        <div class="eta-status" style="color:var(--herb);font-size:16px;">${escapeHtml(statusLongLabel('delivered'))}</div>
       </div>
     `;
     document.getElementById('route-block').hidden = true;
@@ -83,7 +77,7 @@ function renderStatusHeader(order) {
     <div class="eta-block">
       <div class="eta-label">Commande #${order.id}</div>
       ${eta ? `<div class="eta-num">${eta.min}<span>min</span></div>` : ''}
-      <div class="eta-status">${STATUS_LABELS[order.status] ?? order.status}</div>
+      <div class="eta-status">${escapeHtml(statusLongLabel(order.status))}</div>
     </div>
   `;
 
@@ -135,7 +129,10 @@ function renderItems(order) {
     <div class="items-detail" id="items-detail">
       ${detailLines}
       <div class="detail-line"><span>Livraison</span><span>${formatMoney(order.delivery_fee_cents)}</span></div>
+      ${order.tva_cents ? `<div class="detail-line"><span>TVA</span><span>${formatMoney(order.tva_cents)}</span></div>` : ''}
+      ${order.discount_cents > 0 ? `<div class="detail-line"><span>Remise ${escapeHtml(order.promo_code ?? '')}</span><span>− ${formatMoney(order.discount_cents)}</span></div>` : ''}
       <div class="total-line"><span>Total</span><span>${formatMoney(order.total_cents)}</span></div>
+      <div class="detail-line"><span>Paiement</span><span>${escapeHtml(paymentStatusLabel(order.payment_status))}</span></div>
     </div>
   `;
 
@@ -157,13 +154,21 @@ async function poll() {
       clearInterval(pollTimer);
     }
   } catch (error) {
-    document.getElementById('status-header').innerHTML =
-      `<p class="state-msg" style="padding:0 20px;">Impossible de charger la commande (${error.message}).</p>`;
+    // Le suivi tourne en boucle (polling toutes les 15 s) : une coupure réseau passagère ne
+    // doit pas effacer l'écran déjà affiché, seul un premier chargement en échec le fait.
+    if (document.getElementById('items-block').hidden) {
+      renderError(document.getElementById('status-header'), error, {
+        title: 'Impossible de charger la commande',
+        onRetry: poll,
+      });
+    }
   }
 }
 
 if (!orderId) {
-  document.getElementById('status-header').innerHTML = '<p class="state-msg" style="padding:0 20px;">Aucune commande à afficher.</p>';
+  renderError(document.getElementById('status-header'), { status: 404 }, {
+    title: 'Aucune commande à afficher',
+  });
 } else if (requireLogin(`/suivi.html?order=${orderId}`)) {
   poll();
 

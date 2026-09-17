@@ -1,6 +1,7 @@
 import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
+import { renderError } from '../ui.js';
 
 let restaurantId = null;
 
@@ -23,7 +24,7 @@ async function init() {
     if (error.status === 404) {
       window.location.href = '/backoffice.html';
     } else {
-      document.getElementById('menu-content').innerHTML = `<p class="state-msg">${error.message}</p>`;
+      renderError(document.getElementById('menu-content'), error, { onRetry: init });
     }
   }
 }

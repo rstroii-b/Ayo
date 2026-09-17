@@ -3,6 +3,7 @@ import { requireLogin, logout } from '../auth.js';
 import { formatMoney, escapeHtml } from '../format.js';
 import { realtimeClient } from '../realtime.js';
 import { getCurrentPosition } from '../geolocation.js';
+import { renderError } from '../ui.js';
 
 if (requireLogin('/backoffice.html')) {
   init();
@@ -32,7 +33,7 @@ async function init() {
       document.getElementById('setup-block').hidden = false;
       wireSetupForm();
     } else {
-      document.querySelector('.dcontent').innerHTML = `<p class="state-msg">${error.message}</p>`;
+      renderError(document.querySelector('.dcontent'), error, { onRetry: init });
     }
   }
 }
@@ -174,7 +175,7 @@ async function loadBoard() {
     document.getElementById('nav-count').hidden = orders.length === 0;
     document.getElementById('nav-count').textContent = orders.length;
   } catch (error) {
-    board.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    renderError(board, error, { onRetry: loadBoard });
   }
 }
 

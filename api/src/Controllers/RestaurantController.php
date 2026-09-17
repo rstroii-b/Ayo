@@ -6,8 +6,11 @@ namespace Saveurs\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\PricingService;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\ValidationException;
+use Saveurs\Support\Validator;
 
 final class RestaurantController
 {
@@ -17,51 +20,77 @@ final class RestaurantController
     // du document d'architecture) — les autres catégories tiennent dans un sac à dos de livreur.
     private const SCHEDULED_TYPES = ['furniture'];
 
+    /**
+     * Champs publics d'une fiche commerce.
+     *
+     * `commission_pct` et `owner_id` n'en font pas partie : le taux de commission négocié avec
+     * un commerçant est une donnée commerciale interne, elle était renvoyée à tout visiteur de
+     * GET /restaurants/{id}. Le propriétaire la retrouve sur sa propre fiche (GET /restaurant/mine).
+     */
+    private const PUBLIC_COLUMNS = 'r.id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine,
+        r.photo_url, r.business_type, r.delivery_mode, r.rating_avg, r.review_count,
+        COALESCE(z.currency, "XOF") AS currency';
+
     /** POST /restaurants — le restaurateur crée sa fiche. */
     public function create(Request $request, Response $response): Response
     {
         $body = (array) $request->getParsedBody();
 
-        foreach (['name', 'adresse', 'lat', 'lng'] as $field) {
-            if (empty($body[$field]) && $body[$field] !== '0') {
-                return JsonResponse::error($response, 422, 'Champ manquant', $field);
-            }
+        try {
+            $name = Validator::str($body, 'name', 150);
+            $adresse = Validator::str($body, 'adresse', 255);
+            $lat = Validator::latitude($body);
+            $lng = Validator::longitude($body);
+            $businessType = Validator::optionalEnum($body, 'business_type', self::BUSINESS_TYPES, 'food');
+            $cuisine = Validator::optionalStr($body, 'cuisine_origine', 100);
+            $rccm = Validator::optionalStr($body, 'rccm', 50);
+            $zoneId = isset($body['zone_id']) && $body['zone_id'] !== '' && $body['zone_id'] !== null
+                ? Validator::id($body['zone_id'], 'zone_id')
+                : null;
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
         }
 
-        $businessType = $body['business_type'] ?? 'food';
-        if (!in_array($businessType, self::BUSINESS_TYPES, true)) {
-            return JsonResponse::error($response, 422, 'Type de commerce invalide');
+        $db = Database::connection();
+
+        // La zone porte les frais de livraison et le multiplicateur de pointe : on vérifie
+        // qu'elle existe plutôt que de laisser passer une clé étrangère invalide (500) ou un
+        // rattachement à une zone choisie au hasard.
+        if ($zoneId !== null && !$this->zoneExists($db, $zoneId)) {
+            return JsonResponse::error($response, 422, 'Zone de livraison inconnue', 'zone_id');
         }
 
         $deliveryMode = in_array($businessType, self::SCHEDULED_TYPES, true) ? 'scheduled' : 'instant';
-        $slug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($body['name'])), '-');
 
-        $stmt = Database::connection()->prepare(
+        $stmt = $db->prepare(
             'INSERT INTO restaurants (owner_id, zone_id, name, slug, rccm, adresse, lat, lng, cuisine_origine, business_type, delivery_mode)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $request->getAttribute('user_id'),
-            $body['zone_id'] ?? null,
-            $body['name'],
-            $slug,
-            $body['rccm'] ?? null,
-            $body['adresse'],
-            $body['lat'],
-            $body['lng'],
-            $body['cuisine_origine'] ?? null,
+            $zoneId,
+            $name,
+            $this->uniqueSlug($db, $name),
+            $rccm,
+            $adresse,
+            $lat,
+            $lng,
+            $cuisine,
             $businessType,
             $deliveryMode,
         ]);
 
-        return JsonResponse::ok($response, ['restaurant_id' => (int) Database::connection()->lastInsertId()], 201);
+        return JsonResponse::ok($response, ['restaurant_id' => (int) $db->lastInsertId()], 201);
     }
 
     /** PATCH /restaurants/{id} — le restaurateur corrige sa fiche (nom, adresse, position...). */
     public function update(Request $request, Response $response, array $routeArgs): Response
     {
-        $stmt = Database::connection()->prepare('SELECT owner_id FROM restaurants WHERE id = ?');
-        $stmt->execute([$routeArgs['id']]);
+        $restaurantId = (int) $routeArgs['id'];
+        $db = Database::connection();
+
+        $stmt = $db->prepare('SELECT owner_id FROM restaurants WHERE id = ?');
+        $stmt->execute([$restaurantId]);
         $ownerId = $stmt->fetchColumn();
 
         if ($ownerId === false || (int) $ownerId !== (int) $request->getAttribute('user_id')) {
@@ -69,18 +98,41 @@ final class RestaurantController
         }
 
         $body = (array) $request->getParsedBody();
-        $allowed = ['name', 'adresse', 'lat', 'lng', 'cuisine_origine', 'zone_id', 'photo_url'];
-        $fields = array_intersect_key($body, array_flip($allowed));
+
+        try {
+            $validators = [
+                'name' => fn () => Validator::str($body, 'name', 150),
+                'adresse' => fn () => Validator::str($body, 'adresse', 255),
+                'lat' => fn () => Validator::latitude($body),
+                'lng' => fn () => Validator::longitude($body),
+                'cuisine_origine' => fn () => Validator::optionalStr($body, 'cuisine_origine', 100),
+                'zone_id' => fn () => Validator::id($body['zone_id'], 'zone_id'),
+                // Cette URL finit dans un `background-image` côté front : seul https est accepté.
+                'photo_url' => fn () => Validator::optionalHttpsUrl($body, 'photo_url'),
+            ];
+
+            $fields = [];
+            foreach ($validators as $field => $validate) {
+                if (array_key_exists($field, $body)) {
+                    $fields[$field] = $validate();
+                }
+            }
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
+        }
 
         if ($fields === []) {
             return JsonResponse::error($response, 422, 'Aucun champ modifiable fourni');
         }
 
-        $set = implode(', ', array_map(fn ($f) => "{$f} = ?", array_keys($fields)));
-        $args = array_values($fields);
-        $args[] = $routeArgs['id'];
+        if (isset($fields['zone_id']) && !$this->zoneExists($db, (int) $fields['zone_id'])) {
+            return JsonResponse::error($response, 422, 'Zone de livraison inconnue', 'zone_id');
+        }
 
-        Database::connection()->prepare("UPDATE restaurants SET {$set} WHERE id = ?")->execute($args);
+        $set = implode(', ', array_map(fn ($f) => "{$f} = ?", array_keys($fields)));
+        $args = [...array_values($fields), $restaurantId];
+
+        $db->prepare("UPDATE restaurants SET {$set} WHERE id = ?")->execute($args);
 
         return JsonResponse::ok($response, ['updated' => true]);
     }
@@ -90,7 +142,7 @@ final class RestaurantController
     {
         $stmt = Database::connection()->prepare(
             'SELECT r.id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode,
-                    r.commission_pct, COALESCE(z.currency, "XOF") AS currency
+                    r.rating_avg, r.review_count, r.commission_pct, COALESCE(z.currency, "XOF") AS currency
              FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
              WHERE r.owner_id = ? ORDER BY r.id LIMIT 1'
         );
@@ -178,41 +230,39 @@ final class RestaurantController
         $params = $request->getQueryParams();
         $db = Database::connection();
 
-        $where = ['is_active = 1'];
+        $where = ['r.is_active = 1'];
         $args = [];
 
         if (!empty($params['business_type']) && in_array($params['business_type'], self::BUSINESS_TYPES, true)) {
-            $where[] = 'business_type = ?';
+            $where[] = 'r.business_type = ?';
             $args[] = $params['business_type'];
         }
 
-        if (!empty($params['region'])) {
-            $where[] = 'cuisine_origine = ?';
-            $args[] = $params['region'];
+        if (!empty($params['region']) && is_string($params['region'])) {
+            $where[] = 'r.cuisine_origine = ?';
+            $args[] = mb_substr($params['region'], 0, 100);
         }
 
-        if (!empty($params['q'])) {
-            $where[] = 'name LIKE ?';
-            $args[] = '%' . $params['q'] . '%';
+        if (!empty($params['q']) && is_string($params['q'])) {
+            $where[] = 'r.name LIKE ?';
+            $args[] = '%' . $this->escapeLike(mb_substr($params['q'], 0, 80)) . '%';
         }
 
-        $orderBy = 'name ASC';
-        $withDistance = !empty($params['lat']) && !empty($params['lng']);
+        $orderBy = 'r.name ASC';
+        $withDistance = $this->hasCoordinates($params);
+        $select = self::PUBLIC_COLUMNS;
 
         // Tri par distance (formule de Haversine) si la position du client est fournie —
-        // sert aussi à estimer frais et délai de livraison (voir estimateDelivery ci-dessous).
+        // sert aussi à estimer frais et délai de livraison (voir withDeliveryEstimate).
         if ($withDistance) {
             $lat = (float) $params['lat'];
             $lng = (float) $params['lng'];
 
-            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode, r.lat, r.lng,
-                COALESCE(z.currency, 'XOF') AS currency, z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
+            $select .= ", z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier,
                 (6371 * acos(cos(radians(?)) * cos(radians(r.lat)) *
                 cos(radians(r.lng) - radians(?)) + sin(radians(?)) * sin(radians(r.lat)))) AS distance_km";
             $args = array_merge([$lat, $lng, $lat], $args);
             $orderBy = 'distance_km ASC';
-        } else {
-            $select = "r.id, r.name, r.slug, r.cuisine_origine, r.photo_url, r.business_type, r.delivery_mode, r.lat, r.lng, COALESCE(z.currency, 'XOF') AS currency";
         }
 
         $sql = "SELECT {$select} FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
@@ -226,33 +276,46 @@ final class RestaurantController
             $restaurants = array_map([$this, 'withDeliveryEstimate'], $restaurants);
         }
 
-        return JsonResponse::ok($response, ['restaurants' => $restaurants]);
+        return JsonResponse::ok($response, ['restaurants' => array_map([$this, 'withRating'], $restaurants)]);
     }
 
     /**
-     * Estimation frais + délai de livraison pour la liste — même formule de frais que la
-     * commande réelle (voir OrderController::create). Le délai est une estimation grossière
-     * (préparation fixe + trajet à vitesse moyenne), affichée comme fourchette, jamais promise.
+     * Estimation frais + délai de livraison pour la liste.
+     *
+     * Le calcul n'est plus refait ici : il passe par PricingService, exactement comme la
+     * commande réelle. C'est le seul moyen d'éviter la situation précédente, où la liste
+     * annonçait un montant que la commande ne confirmait pas.
      */
     private function withDeliveryEstimate(array $restaurant): array
     {
         $distanceKm = (float) $restaurant['distance_km'];
-        // Repli si le restaurant n'a pas de zone_id assigné — mêmes valeurs que le seed Abidjan
-        // (voir database/schema.sql), pour rester à l'échelle XOF plutôt qu'un repli EUR-cents.
-        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 50000);
-        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 15000);
-        $minFee = (int) ($restaurant['min_fee_cents'] ?? 100000);
-        $surge = (float) ($restaurant['surge_multiplier'] ?? 1.0);
 
-        $restaurant['delivery_fee_cents'] = (int) round(max($minFee, $baseFee + $distanceKm * $perKm) * $surge);
+        $restaurant['delivery_fee_cents'] = PricingService::deliveryFeeCents($distanceKm, $restaurant);
+        $eta = PricingService::etaMinutes($distanceKm);
+        $restaurant['eta_low_min'] = $eta['low'];
+        $restaurant['eta_high_min'] = $eta['high'];
 
-        $prepMin = 15;
-        $travelMin = ($distanceKm / 18) * 60; // vitesse moyenne estimée 18 km/h (vélo/scooter urbain)
-        $low = max(15, (int) (round(($prepMin + $travelMin - 5) / 5) * 5));
-        $restaurant['eta_low_min'] = $low;
-        $restaurant['eta_high_min'] = $low + 10;
+        unset(
+            $restaurant['base_fee_cents'],
+            $restaurant['price_per_km_cents'],
+            $restaurant['min_fee_cents'],
+            $restaurant['surge_multiplier']
+        );
 
-        unset($restaurant['base_fee_cents'], $restaurant['price_per_km_cents'], $restaurant['min_fee_cents'], $restaurant['surge_multiplier']);
+        return $restaurant;
+    }
+
+    /**
+     * Normalise la note affichée. `review_count = 0` est renvoyé tel quel, sans note inventée :
+     * la fiche restaurant affichait « 4,8 ★ · 1 200 avis » pour tous les commerces, y compris
+     * ceux n'ayant jamais reçu un seul avis.
+     */
+    private function withRating(array $restaurant): array
+    {
+        $reviewCount = (int) ($restaurant['review_count'] ?? 0);
+
+        $restaurant['review_count'] = $reviewCount;
+        $restaurant['rating_avg'] = $reviewCount > 0 ? round((float) $restaurant['rating_avg'], 1) : null;
 
         return $restaurant;
     }
@@ -260,19 +323,45 @@ final class RestaurantController
     /** GET /restaurants/{id} */
     public function show(Request $request, Response $response, array $routeArgs): Response
     {
-        $restaurant = $this->findRestaurant($routeArgs['id']);
+        $restaurant = $this->findRestaurant((int) $routeArgs['id']);
 
         if ($restaurant === null) {
             return JsonResponse::error($response, 404, 'Restaurant introuvable');
         }
 
-        return JsonResponse::ok($response, $restaurant);
+        $params = $request->getQueryParams();
+
+        // Frais et délai réels si le client a partagé sa position : la fiche affiche alors la
+        // même estimation que la liste et que le panier, au lieu d'une valeur de repli.
+        if ($this->hasCoordinates($params)) {
+            $distanceKm = PricingService::haversineKm(
+                (float) $params['lat'],
+                (float) $params['lng'],
+                (float) $restaurant['lat'],
+                (float) $restaurant['lng']
+            );
+
+            $restaurant['distance_km'] = round($distanceKm, 2);
+            $restaurant['delivery_fee_cents'] = PricingService::deliveryFeeCents($distanceKm, $restaurant);
+            $eta = PricingService::etaMinutes($distanceKm);
+            $restaurant['eta_low_min'] = $eta['low'];
+            $restaurant['eta_high_min'] = $eta['high'];
+        }
+
+        unset(
+            $restaurant['base_fee_cents'],
+            $restaurant['price_per_km_cents'],
+            $restaurant['min_fee_cents'],
+            $restaurant['surge_multiplier']
+        );
+
+        return JsonResponse::ok($response, $this->withRating($restaurant));
     }
 
     /** GET /restaurants/{id}/menu */
     public function menu(Request $request, Response $response, array $routeArgs): Response
     {
-        $restaurant = $this->findRestaurant($routeArgs['id']);
+        $restaurant = $this->findRestaurant((int) $routeArgs['id']);
 
         if ($restaurant === null) {
             return JsonResponse::error($response, 404, 'Restaurant introuvable');
@@ -300,14 +389,17 @@ final class RestaurantController
             ));
         }
 
-        return JsonResponse::ok($response, ['categories' => $categories]);
+        return JsonResponse::ok($response, [
+            'business_type' => $restaurant['business_type'],
+            'categories' => $categories,
+        ]);
     }
 
-    private function findRestaurant(string $id): ?array
+    private function findRestaurant(int $id): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT r.id, r.owner_id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.photo_url, r.business_type,
-                    r.delivery_mode, r.commission_pct, COALESCE(z.currency, "XOF") AS currency
+            'SELECT ' . self::PUBLIC_COLUMNS . ', z.base_fee_cents, z.price_per_km_cents,
+                    z.min_fee_cents, z.surge_multiplier
              FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
              WHERE r.id = ? AND r.is_active = 1'
         );
@@ -315,5 +407,59 @@ final class RestaurantController
         $restaurant = $stmt->fetch();
 
         return $restaurant === false ? null : $restaurant;
+    }
+
+    private function hasCoordinates(array $params): bool
+    {
+        return isset($params['lat'], $params['lng'])
+            && is_numeric($params['lat'])
+            && is_numeric($params['lng'])
+            && abs((float) $params['lat']) <= 90
+            && abs((float) $params['lng']) <= 180;
+    }
+
+    private function zoneExists(\PDO $db, int $zoneId): bool
+    {
+        $stmt = $db->prepare('SELECT 1 FROM delivery_zones WHERE id = ?');
+        $stmt->execute([$zoneId]);
+
+        return $stmt->fetch() !== false;
+    }
+
+    /**
+     * `%` et `_` sont des jokers SQL : sans échappement, une recherche « %%% » parcourt
+     * l'ensemble de la table et une recherche littérale sur un underscore ne trouve pas ce
+     * qu'on cherche. Ce n'est pas une injection (la valeur reste paramétrée), mais un
+     * comportement faux et un coût inutile.
+     */
+    private function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $value);
+    }
+
+    /**
+     * Le slug alimente une URL publique : il doit rester unique. Deux commerces homonymes
+     * produisaient le même slug et se disputaient l'adresse.
+     */
+    private function uniqueSlug(\PDO $db, string $name): string
+    {
+        $base = trim(preg_replace('/[^a-z0-9]+/', '-', mb_strtolower($name)) ?? '', '-');
+        if ($base === '') {
+            $base = 'commerce';
+        }
+        $base = mb_substr($base, 0, 120);
+
+        $stmt = $db->prepare('SELECT 1 FROM restaurants WHERE slug = ?');
+
+        $slug = $base;
+        for ($suffix = 2; $suffix < 100; $suffix++) {
+            $stmt->execute([$slug]);
+            if ($stmt->fetch() === false) {
+                return $slug;
+            }
+            $slug = "{$base}-{$suffix}";
+        }
+
+        return $base . '-' . bin2hex(random_bytes(3));
     }
 }

@@ -12,6 +12,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Saveurs\Support\CinetPayClient;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\ValidationException;
+use Saveurs\Support\Validator;
 
 final class PaymentController
 {
@@ -21,13 +23,15 @@ final class PaymentController
         $body = (array) $request->getParsedBody();
         $userId = (int) $request->getAttribute('user_id');
 
-        if (empty($body['order_id'])) {
-            return JsonResponse::error($response, 422, 'order_id requis');
+        try {
+            $orderId = Validator::id($body['order_id'] ?? null, 'order_id');
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
         }
 
         $db = Database::connection();
         $stmt = $db->prepare(
-            'SELECT o.id, o.client_id, o.status, o.total_cents, o.payment_intent_id,
+            'SELECT o.id, o.client_id, o.status, o.payment_status, o.total_cents, o.payment_intent_id,
                     o.cinetpay_notify_token, o.cinetpay_payment_url,
                     u.first_name, u.last_name, u.email, u.phone
              FROM orders o
@@ -35,7 +39,7 @@ final class PaymentController
              JOIN users u ON u.id = o.client_id
              WHERE o.id = ?'
         );
-        $stmt->execute([$body['order_id']]);
+        $stmt->execute([$orderId]);
         $order = $stmt->fetch();
 
         if ($order === false || (int) $order['client_id'] !== $userId) {
@@ -44,6 +48,10 @@ final class PaymentController
 
         if ($order['status'] !== 'pending') {
             return JsonResponse::error($response, 409, 'Cette commande ne peut plus être payée');
+        }
+
+        if ($order['payment_status'] === 'paid') {
+            return JsonResponse::error($response, 409, 'Cette commande est déjà payée');
         }
 
         $client = CinetPayClient::client();
@@ -82,7 +90,18 @@ final class PaymentController
                 clientEmail: $order['email'],
             ));
         } catch (\Throwable $e) {
-            return JsonResponse::error($response, 502, 'Erreur CinetPay', $e->getMessage());
+            // Le détail de l'erreur reste dans les logs serveur : il contient l'identifiant
+            // marchand, l'URL d'API et parfois le corps de la réponse CinetPay. Le client, lui,
+            // reçoit un message utilisable et rien d'autre.
+            error_log('[CinetPay] création de paiement échouée pour la commande '
+                . $order['id'] . ' : ' . $e->getMessage());
+
+            return JsonResponse::error(
+                $response,
+                502,
+                'Paiement momentanément indisponible',
+                'Réessaie dans un instant. Ta commande est enregistrée.'
+            );
         }
 
         $db->prepare(
@@ -137,13 +156,31 @@ final class PaymentController
         $orderId = (int) $order['id'];
 
         if ($confirmed->isSuccessful()) {
-            $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "payment_succeeded", "system")')
-                ->execute([$orderId]);
+            // La clause `payment_status = 'unpaid'` rend le traitement idempotent : CinetPay
+            // rejoue ses notifications, et sans elle chaque rejeu ajoutait une ligne
+            // d'historique pour un même encaissement.
+            $marked = $db->prepare(
+                "UPDATE orders SET payment_status = 'paid', paid_at = NOW()
+                 WHERE id = ? AND payment_status = 'unpaid'"
+            );
+            $marked->execute([$orderId]);
+
+            if ($marked->rowCount() > 0) {
+                $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "payment_succeeded", "system")')
+                    ->execute([$orderId]);
+            }
         } elseif ($confirmed->isFinal()) {
-            $db->prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'pending'")
-                ->execute([$orderId]);
-            $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "payment_failed", "system")')
-                ->execute([$orderId]);
+            $failed = $db->prepare(
+                "UPDATE orders SET payment_status = 'failed' WHERE id = ? AND payment_status = 'unpaid'"
+            );
+            $failed->execute([$orderId]);
+
+            if ($failed->rowCount() > 0) {
+                $db->prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'pending'")
+                    ->execute([$orderId]);
+                $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "payment_failed", "system")')
+                    ->execute([$orderId]);
+            }
         }
 
         return JsonResponse::ok($response, ['received' => true]);

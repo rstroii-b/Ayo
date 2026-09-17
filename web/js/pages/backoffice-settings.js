@@ -2,6 +2,7 @@ import { apiFetch } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { escapeHtml } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
+import { renderError } from '../ui.js';
 
 let restaurantId = null;
 
@@ -25,7 +26,7 @@ async function init() {
     if (error.status === 404) {
       window.location.href = '/backoffice.html';
     } else {
-      document.getElementById('settings-content').innerHTML = `<p class="state-msg">${error.message}</p>`;
+      renderError(document.getElementById('settings-content'), error, { onRetry: init });
     }
   }
 }

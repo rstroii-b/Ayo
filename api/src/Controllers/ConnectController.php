@@ -8,6 +8,8 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\ValidationException;
+use Saveurs\Support\Validator;
 
 /**
  * Paiements sortants (reversements) — restaurateurs et livreurs enregistrent leur compte
@@ -15,6 +17,15 @@ use Saveurs\Support\JsonResponse;
  */
 final class ConnectController
 {
+    /**
+     * Opérateurs mobile money acceptés par CinetPay en Côte d'Ivoire.
+     *
+     * Le champ partait auparavant tel quel vers l'API de virement : une valeur fantaisiste ne
+     * se découvrait qu'au moment du reversement, c'est-à-dire trop tard, avec un virement en
+     * échec et un commerçant qui attend son argent.
+     */
+    private const OPERATORS = ['OM_CI', 'MTN_CI', 'MOOV_CI', 'WAVE_CI'];
+
     /** GET /connect/status — l'app peut afficher "paiements activés" une fois le mobile money renseigné */
     public function status(Request $request, Response $response): Response
     {
@@ -51,8 +62,15 @@ final class ConnectController
             return JsonResponse::error($response, 403, 'Réservé aux restaurateurs et livreurs');
         }
 
-        if (empty($body['operator']) || empty($body['phone_number'])) {
-            return JsonResponse::error($response, 422, 'operator et phone_number requis');
+        try {
+            $operator = Validator::enum($body, 'operator', self::OPERATORS);
+            $phoneNumber = Validator::optionalPhone($body, 'phone_number');
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
+        }
+
+        if ($phoneNumber === null) {
+            return JsonResponse::error($response, 422, 'Numéro mobile money requis', 'phone_number');
         }
 
         $db = Database::connection();
@@ -64,10 +82,10 @@ final class ConnectController
             }
 
             $db->prepare('UPDATE restaurants SET mobile_money_operator = ?, mobile_money_number = ? WHERE id = ?')
-                ->execute([$body['operator'], $body['phone_number'], $restaurant['id']]);
+                ->execute([$operator, $phoneNumber, $restaurant['id']]);
         } else {
             $db->prepare('UPDATE driver_profiles SET mobile_money_operator = ?, mobile_money_number = ? WHERE user_id = ?')
-                ->execute([$body['operator'], $body['phone_number'], $userId]);
+                ->execute([$operator, $phoneNumber, $userId]);
         }
 
         return JsonResponse::ok($response, ['updated' => true]);

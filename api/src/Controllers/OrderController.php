@@ -6,11 +6,16 @@ namespace Saveurs\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\CouponService;
 use Saveurs\Services\PayoutService;
+use Saveurs\Services\PricingService;
 use Saveurs\Services\PushService;
+use Saveurs\Support\CinetPayClient;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
 use Saveurs\Support\Realtime;
+use Saveurs\Support\ValidationException;
+use Saveurs\Support\Validator;
 
 /**
  * Transitions de statut autorisées par rôle — voir §3/§6 du document
@@ -45,153 +50,156 @@ final class OrderController
         ],
     ];
 
+    /**
+     * Colonnes renvoyées pour une commande.
+     *
+     * Liste explicite, et pas `o.*` : la table porte `cinetpay_notify_token`, le secret qui
+     * sert à vérifier l'authenticité des webhooks CinetPay. Un `SELECT o.*` le renvoyait au
+     * client, au restaurateur et au livreur — de quoi forger une confirmation de paiement pour
+     * une commande jamais payée. Même raison pour `idempotency_key`, qui identifie la requête.
+     */
+    private const ORDER_COLUMNS = 'o.id, o.client_id, o.restaurant_id, o.driver_id, o.status,
+        o.subtotal_cents, o.delivery_fee_cents, o.tva_cents, o.discount_cents, o.promo_code,
+        o.delivery_mode, o.total_cents, o.payment_status, o.adresse_livraison, o.lat, o.lng,
+        o.note_livreur, o.created_at, o.accepted_at, o.ready_at, o.picked_up_at, o.delivered_at';
+
+    /**
+     * POST /orders/quote — récapitulatif chiffré d'un panier, sans rien créer.
+     *
+     * C'est cet endpoint que l'écran panier interroge à chaque changement (quantité, mode de
+     * livraison, code promo) : le total affiché est ainsi, par construction, celui qui sera
+     * facturé. Auparavant le front additionnait ses propres frais et ses propres remises, et
+     * découvrait l'écart au moment du débit.
+     */
+    public function quote(Request $request, Response $response): Response
+    {
+        $clientId = (int) $request->getAttribute('user_id');
+
+        try {
+            $basket = $this->priceBasket((array) $request->getParsedBody(), $clientId, requireLabel: false);
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
+        } catch (\DomainException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage());
+        }
+
+        return JsonResponse::ok($response, [
+            ...$basket['summary'],
+            'delivery_mode' => $basket['delivery_mode'],
+            'distance_km' => round($basket['distance_km'], 2),
+            'eta_low_min' => $basket['eta']['low'],
+            'eta_high_min' => $basket['eta']['high'],
+            'promo' => [
+                'code' => $basket['coupon']['coupon']['code'] ?? null,
+                'status' => $basket['coupon']['status'],
+                'message' => $basket['coupon']['message'],
+            ],
+            'lines' => array_map(
+                fn (array $line) => [
+                    'menu_item_id' => $line['menu_item_id'],
+                    'name' => $line['name'],
+                    'quantity' => $line['quantity'],
+                    'unit_price_cents' => $line['unit_price_cents'],
+                    'line_total_cents' => $line['line_total_cents'],
+                    'options' => $line['options'],
+                ],
+                $basket['lines']
+            ),
+        ]);
+    }
+
     /** POST /orders — le client passe commande. Les prix sont toujours recalculés côté serveur. */
     public function create(Request $request, Response $response): Response
     {
-        $idempotencyKey = $request->getHeaderLine('Idempotency-Key');
-        if ($idempotencyKey === '') {
+        $idempotencyKey = trim($request->getHeaderLine('Idempotency-Key'));
+        if ($idempotencyKey === '' || mb_strlen($idempotencyKey) > 80) {
             return JsonResponse::error($response, 422, "L'en-tête Idempotency-Key est requis");
         }
 
         $db = Database::connection();
+        $clientId = (int) $request->getAttribute('user_id');
 
-        $existing = $db->prepare('SELECT id, status, total_cents FROM orders WHERE idempotency_key = ?');
-        $existing->execute([$idempotencyKey]);
+        // Rejeu de la même requête : on renvoie la commande déjà créée. Le filtre sur
+        // client_id est indispensable — sans lui, n'importe qui pouvait présenter la clé
+        // d'un autre et récupérer l'identifiant, le statut et le montant de sa commande.
+        $existing = $db->prepare(
+            'SELECT id AS order_id, status, subtotal_cents, delivery_fee_cents, tva_cents,
+                    discount_cents, total_cents
+             FROM orders WHERE idempotency_key = ? AND client_id = ?'
+        );
+        $existing->execute([$idempotencyKey, $clientId]);
         if (($order = $existing->fetch()) !== false) {
             return JsonResponse::ok($response, $order, 200);
         }
 
         $body = (array) $request->getParsedBody();
-        $clientId = (int) $request->getAttribute('user_id');
 
-        if (empty($body['restaurant_id']) || empty($body['items']) || empty($body['delivery_address'])) {
-            return JsonResponse::error($response, 422, 'restaurant_id, items et delivery_address sont requis');
+        try {
+            $basket = $this->priceBasket($body, $clientId, requireLabel: true);
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
+        } catch (\DomainException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage());
         }
 
-        $restaurantId = (int) $body['restaurant_id'];
-        $address = $body['delivery_address'];
-
-        $restaurantStmt = $db->prepare(
-            'SELECT r.lat, r.lng, z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier
-             FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
-             WHERE r.id = ? AND r.is_active = 1'
-        );
-        $restaurantStmt->execute([$restaurantId]);
-        $restaurant = $restaurantStmt->fetch();
-
-        if ($restaurant === false) {
-            return JsonResponse::error($response, 404, 'Restaurant introuvable');
+        // Un code promo refusé n'est jamais ignoré en silence : le client a vu une remise à
+        // l'écran, il doit savoir pourquoi elle ne s'applique plus (expiré entre-temps,
+        // panier repassé sous le minimum…) avant d'être débité du prix plein.
+        if ($basket['coupon']['status'] !== 'none' && $basket['coupon']['status'] !== 'ok') {
+            return JsonResponse::error($response, 422, 'Code promo refusé', $basket['coupon']['message']);
         }
 
-        // Prix figés en base — jamais ceux envoyés par le client.
-        $itemIds = array_column($body['items'], 'menu_item_id');
-        $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
-        $priceStmt = $db->prepare(
-            "SELECT id, price_cents, vat_rate FROM menu_items WHERE id IN ({$placeholders}) AND restaurant_id = ? AND is_available = 1"
-        );
-        $priceStmt->execute([...$itemIds, $restaurantId]);
-        $menuItems = [];
-        foreach ($priceStmt->fetchAll() as $row) {
-            $menuItems[(int) $row['id']] = $row;
-        }
-
-        // Variantes (item_options) — taille/couleur pour la mode, niveau de piment pour un plat...
-        $optionsStmt = $db->prepare(
-            "SELECT id, menu_item_id, name, price_delta_cents, stock_quantity FROM item_options WHERE menu_item_id IN ({$placeholders})"
-        );
-        $optionsStmt->execute($itemIds);
-        $optionsById = [];
-        foreach ($optionsStmt->fetchAll() as $option) {
-            $optionsById[(int) $option['id']] = $option;
-        }
-
-        $subtotalCents = 0;
-        $tvaCents = 0;
-        $orderItems = [];
-        $stockDecrements = []; // option_id => quantité totale à décrémenter
-
-        foreach ($body['items'] as $line) {
-            $menuItemId = (int) $line['menu_item_id'];
-            if (!isset($menuItems[$menuItemId])) {
-                return JsonResponse::error($response, 422, 'Article indisponible', (string) $menuItemId);
-            }
-            $quantity = max(1, (int) ($line['quantity'] ?? 1));
-
-            $unitPriceCents = (int) $menuItems[$menuItemId]['price_cents'];
-            $selectedOptions = [];
-            foreach ((array) ($line['option_ids'] ?? []) as $optionId) {
-                $optionId = (int) $optionId;
-                $option = $optionsById[$optionId] ?? null;
-
-                // Sécurité : une option doit appartenir à l'article commandé, jamais un autre.
-                if ($option === null || (int) $option['menu_item_id'] !== $menuItemId) {
-                    return JsonResponse::error($response, 422, 'Variante invalide', (string) $optionId);
-                }
-
-                $unitPriceCents += (int) $option['price_delta_cents'];
-                $selectedOptions[] = ['id' => $optionId, 'name' => $option['name'], 'price_delta_cents' => (int) $option['price_delta_cents']];
-
-                if ($option['stock_quantity'] !== null) {
-                    $stockDecrements[$optionId] = ($stockDecrements[$optionId] ?? 0) + $quantity;
-                    if ($stockDecrements[$optionId] > (int) $option['stock_quantity']) {
-                        return JsonResponse::error($response, 422, 'Stock insuffisant', $option['name']);
-                    }
-                }
-            }
-
-            $lineTotal = $unitPriceCents * $quantity;
-            $subtotalCents += $lineTotal;
-            $tvaCents += (int) round($lineTotal * ((float) $menuItems[$menuItemId]['vat_rate'] / 100));
-            $orderItems[] = [$menuItemId, $quantity, $unitPriceCents, json_encode($selectedOptions)];
-        }
-
-        $distanceKm = $this->haversineKm(
-            (float) $restaurant['lat'],
-            (float) $restaurant['lng'],
-            (float) $address['lat'],
-            (float) $address['lng']
-        );
-
-        // Repli si le restaurant n'a pas de zone_id assigné — mêmes valeurs que le seed Abidjan
-        // (voir database/schema.sql), pour rester à l'échelle XOF plutôt qu'un repli EUR-cents.
-        $baseFee = (int) ($restaurant['base_fee_cents'] ?? 50000);
-        $perKm = (int) ($restaurant['price_per_km_cents'] ?? 15000);
-        $minFee = (int) ($restaurant['min_fee_cents'] ?? 100000);
-        $surge = (float) ($restaurant['surge_multiplier'] ?? 1.0);
-
-        $deliveryFeeCents = (int) round(max($minFee, $baseFee + $distanceKm * $perKm) * $surge);
-        // TVA calculée par ligne (chaque article porte son propre taux — voir §7) plutôt qu'un taux
-        // fixe restauration : un panier peut mélanger plusieurs taux (ex: supermarché).
-        $totalCents = $subtotalCents + $deliveryFeeCents + $tvaCents;
+        $restaurantId = (int) $basket['restaurant']['id'];
+        $summary = $basket['summary'];
+        $note = Validator::optionalStr($body, 'note', 255);
 
         $db->beginTransaction();
 
         try {
             $orderStmt = $db->prepare(
                 'INSERT INTO orders (client_id, restaurant_id, status, subtotal_cents, delivery_fee_cents,
-                    tva_cents, total_cents, idempotency_key, adresse_livraison, lat, lng, note_livreur)
-                 VALUES (?, ?, "pending", ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    tva_cents, total_cents, promo_code, discount_cents, delivery_mode, idempotency_key,
+                    adresse_livraison, lat, lng, note_livreur)
+                 VALUES (?, ?, "pending", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $orderStmt->execute([
-                $clientId, $restaurantId, $subtotalCents, $deliveryFeeCents, $tvaCents, $totalCents,
-                $idempotencyKey, $address['label'] ?? '', $address['lat'], $address['lng'], $body['note'] ?? null,
+                $clientId,
+                $restaurantId,
+                $summary['subtotal_cents'],
+                $summary['delivery_fee_cents'],
+                $summary['tva_cents'],
+                $summary['total_cents'],
+                $basket['coupon']['coupon']['code'] ?? null,
+                $summary['discount_cents'],
+                $basket['delivery_mode'],
+                $idempotencyKey,
+                $basket['address']['label'],
+                $basket['address']['lat'],
+                $basket['address']['lng'],
+                $note,
             ]);
             $orderId = (int) $db->lastInsertId();
 
             $itemStmt = $db->prepare(
                 'INSERT INTO order_items (order_id, menu_item_id, quantity, price_cents, options_json) VALUES (?, ?, ?, ?, ?)'
             );
-            foreach ($orderItems as [$menuItemId, $quantity, $priceCents, $optionsJson]) {
-                $itemStmt->execute([$orderId, $menuItemId, $quantity, $priceCents, $optionsJson]);
+            foreach ($basket['lines'] as $line) {
+                $itemStmt->execute([
+                    $orderId,
+                    $line['menu_item_id'],
+                    $line['quantity'],
+                    $line['unit_price_cents'],
+                    json_encode($line['options'], JSON_UNESCAPED_UNICODE),
+                ]);
             }
 
             // Décrément atomique — la clause stock_quantity >= ? empêche une vente en double si
             // deux commandes touchent le même stock limité en même temps (ex: dernière taille M).
-            if ($stockDecrements !== []) {
+            if ($basket['stock_decrements'] !== []) {
                 $stockStmt = $db->prepare(
                     'UPDATE item_options SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?'
                 );
-                foreach ($stockDecrements as $optionId => $qty) {
+                foreach ($basket['stock_decrements'] as $optionId => $qty) {
                     $stockStmt->execute([$qty, $optionId, $qty]);
                     if ($stockStmt->rowCount() === 0) {
                         $db->rollBack();
@@ -201,10 +209,38 @@ final class OrderController
                 }
             }
 
+            // Consommation du coupon dans la même transaction que la commande : un coupon à
+            // usage unique ne doit pas être brûlé par une commande qui échoue ensuite.
+            if ($basket['coupon']['status'] === 'ok') {
+                $redeemed = (new CouponService())->redeem(
+                    $db,
+                    (int) $basket['coupon']['coupon']['id'],
+                    $clientId,
+                    $orderId,
+                    $summary['discount_cents']
+                );
+
+                if (!$redeemed) {
+                    $db->rollBack();
+
+                    return JsonResponse::error($response, 409, 'Ce code promo vient d\'atteindre sa limite d\'utilisation');
+                }
+            }
+
             $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "pending", "client")')
                 ->execute([$orderId]);
 
             $db->commit();
+        } catch (\PDOException $e) {
+            $db->rollBack();
+
+            // Clé d'idempotence déjà utilisée par un autre compte (la contrainte d'unicité est
+            // globale) : c'est un doublon, pas une panne — 409 plutôt qu'une 500 opaque.
+            if ($e->getCode() === '23000') {
+                return JsonResponse::error($response, 409, 'Cette commande a déjà été enregistrée');
+            }
+
+            throw $e;
         } catch (\Throwable $e) {
             $db->rollBack();
             throw $e;
@@ -215,21 +251,209 @@ final class OrderController
         return JsonResponse::ok($response, [
             'order_id' => $orderId,
             'status' => 'pending',
-            'subtotal_cents' => $subtotalCents,
-            'delivery_fee_cents' => $deliveryFeeCents,
-            'tva_cents' => $tvaCents,
-            'total_cents' => $totalCents,
+            ...$summary,
         ], 201);
+    }
+
+    /**
+     * Chiffre un panier : validation des entrées, prix repris en base, frais de livraison,
+     * TVA et remise. Aucune écriture — partagé tel quel par l'aperçu (quote) et la création
+     * (create), pour qu'aucun écart de calcul ne puisse exister entre les deux.
+     *
+     * @throws ValidationException entrée mal formée (→ 422 avec le champ fautif)
+     * @throws \DomainException    entrée bien formée mais refusée métier (article indisponible…)
+     *
+     * @return array{restaurant:array, address:array, lines:list<array>, stock_decrements:array<int,int>,
+     *               summary:array, coupon:array, distance_km:float, delivery_mode:string, eta:array}
+     */
+    private function priceBasket(array $body, int $clientId, bool $requireLabel): array
+    {
+        $restaurantId = Validator::id($body['restaurant_id'] ?? null, 'restaurant_id');
+        $rawLines = Validator::objectList($body, 'items', PricingService::MAX_ITEMS_PER_ORDER);
+        $deliveryMode = Validator::optionalEnum($body, 'delivery_mode', PricingService::DELIVERY_MODES, 'standard');
+        $promoCode = Validator::optionalCouponCode($body);
+
+        $rawAddress = $body['delivery_address'] ?? null;
+        if (!is_array($rawAddress)) {
+            throw new ValidationException('delivery_address', 'L\'adresse de livraison est requise.');
+        }
+
+        $address = [
+            'lat' => Validator::latitude($rawAddress),
+            'lng' => Validator::longitude($rawAddress),
+            'label' => $requireLabel
+                ? Validator::str($rawAddress, 'label', 255)
+                : (Validator::optionalStr($rawAddress, 'label', 255) ?? ''),
+        ];
+
+        $db = Database::connection();
+
+        $restaurantStmt = $db->prepare(
+            'SELECT r.id, r.name, r.lat, r.lng, z.base_fee_cents, z.price_per_km_cents,
+                    z.min_fee_cents, z.surge_multiplier
+             FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
+             WHERE r.id = ? AND r.is_active = 1'
+        );
+        $restaurantStmt->execute([$restaurantId]);
+        $restaurant = $restaurantStmt->fetch();
+
+        if ($restaurant === false) {
+            throw new \DomainException('Ce commerce n\'est pas disponible.');
+        }
+
+        $distanceKm = PricingService::haversineKm(
+            (float) $restaurant['lat'],
+            (float) $restaurant['lng'],
+            $address['lat'],
+            $address['lng']
+        );
+
+        // Hors rayon : mieux vaut un refus clair à la commande qu'une course impossible
+        // proposée aux livreurs, puis annulée à la main.
+        if ($distanceKm > PricingService::MAX_DELIVERY_DISTANCE_KM) {
+            throw new \DomainException(sprintf(
+                'Cette adresse est trop éloignée du commerce (%.1f km, maximum %.0f km).',
+                $distanceKm,
+                PricingService::MAX_DELIVERY_DISTANCE_KM
+            ));
+        }
+
+        // Normalisation des lignes AVANT toute requête : on ne construit une clause IN (...)
+        // qu'avec des entiers déjà validés.
+        $lines = [];
+        foreach ($rawLines as $index => $rawLine) {
+            $lines[] = [
+                'menu_item_id' => Validator::id($rawLine['menu_item_id'] ?? null, "items[{$index}].menu_item_id"),
+                'quantity' => Validator::optionalInt(
+                    $rawLine,
+                    'quantity',
+                    1,
+                    PricingService::MAX_QUANTITY_PER_LINE,
+                    1
+                ),
+                'option_ids' => Validator::idList(
+                    $rawLine['option_ids'] ?? [],
+                    "items[{$index}].option_ids",
+                    PricingService::MAX_OPTIONS_PER_LINE
+                ),
+            ];
+        }
+
+        $itemIds = array_values(array_unique(array_column($lines, 'menu_item_id')));
+        $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+
+        // Prix figés en base — jamais ceux envoyés par le client.
+        $priceStmt = $db->prepare(
+            "SELECT id, name, price_cents, vat_rate FROM menu_items
+             WHERE id IN ({$placeholders}) AND restaurant_id = ? AND is_available = 1"
+        );
+        $priceStmt->execute([...$itemIds, $restaurantId]);
+        $menuItems = [];
+        foreach ($priceStmt->fetchAll() as $row) {
+            $menuItems[(int) $row['id']] = $row;
+        }
+
+        // Variantes (item_options) — taille/couleur pour la mode, niveau de piment pour un plat...
+        $optionsStmt = $db->prepare(
+            "SELECT id, menu_item_id, name, price_delta_cents, stock_quantity
+             FROM item_options WHERE menu_item_id IN ({$placeholders})"
+        );
+        $optionsStmt->execute($itemIds);
+        $optionsById = [];
+        foreach ($optionsStmt->fetchAll() as $option) {
+            $optionsById[(int) $option['id']] = $option;
+        }
+
+        $subtotalCents = 0;
+        $tvaCents = 0;
+        $pricedLines = [];
+        $stockDecrements = []; // option_id => quantité totale à décrémenter
+
+        foreach ($lines as $line) {
+            $menuItemId = $line['menu_item_id'];
+
+            if (!isset($menuItems[$menuItemId])) {
+                throw new \DomainException('Un article de ton panier n\'est plus disponible.');
+            }
+
+            $menuItem = $menuItems[$menuItemId];
+            $quantity = $line['quantity'];
+            $unitPriceCents = (int) $menuItem['price_cents'];
+            $selectedOptions = [];
+
+            foreach ($line['option_ids'] as $optionId) {
+                $option = $optionsById[$optionId] ?? null;
+
+                // Sécurité : une option doit appartenir à l'article commandé, jamais un autre.
+                // Sans cette vérification, il suffisait de rattacher l'option « -5 000 » d'un
+                // autre article pour se faire sa propre remise.
+                if ($option === null || (int) $option['menu_item_id'] !== $menuItemId) {
+                    throw new \DomainException('Une variante choisie n\'existe pas pour cet article.');
+                }
+
+                $unitPriceCents += (int) $option['price_delta_cents'];
+                $selectedOptions[] = [
+                    'id' => $optionId,
+                    'name' => $option['name'],
+                    'price_delta_cents' => (int) $option['price_delta_cents'],
+                ];
+
+                if ($option['stock_quantity'] !== null) {
+                    $stockDecrements[$optionId] = ($stockDecrements[$optionId] ?? 0) + $quantity;
+                    if ($stockDecrements[$optionId] > (int) $option['stock_quantity']) {
+                        throw new \DomainException("Stock insuffisant pour « {$option['name']} ».");
+                    }
+                }
+            }
+
+            // Un cumul de variantes à delta négatif ne doit jamais rendre une ligne gratuite
+            // ou créditrice : le prix unitaire est plancher à 0.
+            $unitPriceCents = max(0, $unitPriceCents);
+
+            $totals = PricingService::lineTotals($unitPriceCents, $quantity, (float) $menuItem['vat_rate']);
+            $subtotalCents += $totals['line_total_cents'];
+            $tvaCents += $totals['tva_cents'];
+
+            $pricedLines[] = [
+                'menu_item_id' => $menuItemId,
+                'name' => $menuItem['name'],
+                'quantity' => $quantity,
+                'unit_price_cents' => $unitPriceCents,
+                'line_total_cents' => $totals['line_total_cents'],
+                'options' => $selectedOptions,
+            ];
+        }
+
+        $deliveryFeeCents = PricingService::deliveryFeeCents($distanceKm, $restaurant, $deliveryMode);
+        $coupon = (new CouponService())->evaluate($promoCode, $clientId, $subtotalCents);
+
+        return [
+            'restaurant' => $restaurant,
+            'address' => $address,
+            'lines' => $pricedLines,
+            'stock_decrements' => $stockDecrements,
+            'summary' => PricingService::summary(
+                $subtotalCents,
+                $deliveryFeeCents,
+                $tvaCents,
+                $coupon['discount_cents']
+            ),
+            'coupon' => $coupon,
+            'distance_km' => $distanceKm,
+            'delivery_mode' => $deliveryMode,
+            'eta' => PricingService::etaMinutes($distanceKm, $deliveryMode),
+        ];
     }
 
     /** GET /orders/mine — historique des commandes du client connecté. */
     public function mine(Request $request, Response $response): Response
     {
         $stmt = Database::connection()->prepare(
-            'SELECT o.id, o.status, o.total_cents, o.created_at, r.name AS restaurant_name
+            'SELECT o.id, o.status, o.total_cents, o.payment_status, o.created_at, r.name AS restaurant_name
              FROM orders o JOIN restaurants r ON r.id = o.restaurant_id
              WHERE o.client_id = ?
-             ORDER BY o.created_at DESC'
+             ORDER BY o.created_at DESC
+             LIMIT 100'
         );
         $stmt->execute([$request->getAttribute('user_id')]);
 
@@ -277,13 +501,28 @@ final class OrderController
         $items->execute([$order['id']]);
         $order['items'] = $items->fetchAll();
 
+        // Le téléphone du livreur n'est communiqué qu'aux personnes qui doivent le joindre
+        // pendant la course — pas au restaurateur, et plus du tout une fois la commande
+        // terminée : un numéro personnel n'a pas à rester consultable indéfiniment.
         if ($order['driver_id'] !== null) {
             $driver = Database::connection()->prepare(
                 'SELECT u.first_name, u.phone, dp.vehicule_type FROM users u
                  JOIN driver_profiles dp ON dp.user_id = u.id WHERE u.id = ?'
             );
             $driver->execute([$order['driver_id']]);
-            $order['driver'] = $driver->fetch() ?: null;
+            $driverRow = $driver->fetch() ?: null;
+
+            if ($driverRow !== null) {
+                $userId = (int) $request->getAttribute('user_id');
+                $isLive = in_array($order['status'], ['picked_up', 'delivering'], true);
+                $canCall = $isLive && ($userId === (int) $order['client_id'] || $userId === (int) $order['driver_id']);
+
+                if (!$canCall) {
+                    unset($driverRow['phone']);
+                }
+            }
+
+            $order['driver'] = $driverRow;
         }
 
         return JsonResponse::ok($response, $order);
@@ -298,7 +537,7 @@ final class OrderController
         }
 
         $body = (array) $request->getParsedBody();
-        $nextStatus = $body['status'] ?? '';
+        $nextStatus = is_string($body['status'] ?? null) ? $body['status'] : '';
         $role = $this->roleForOrder($request, $order);
 
         $allowed = self::TRANSITIONS[$role][$order['status']] ?? [];
@@ -311,6 +550,19 @@ final class OrderController
             );
         }
 
+        // Une commande n'entre en cuisine qu'une fois encaissée. Le contrôle ne s'applique que
+        // si l'encaissement en ligne est réellement branché : sur une instance sans CinetPay
+        // configuré (démo, recette), il n'y a pas de paiement à attendre et bloquer ici
+        // figerait toutes les commandes en "pending".
+        if ($nextStatus === 'accepted' && $this->paymentRequired() && $order['payment_status'] !== 'paid') {
+            return JsonResponse::error(
+                $response,
+                409,
+                'Commande non payée',
+                "Le paiement de cette commande n'a pas encore été confirmé."
+            );
+        }
+
         $db = Database::connection();
         $timestampColumn = [
             'accepted' => 'accepted_at',
@@ -319,15 +571,28 @@ final class OrderController
             'delivered' => 'delivered_at',
         ][$nextStatus] ?? null;
 
-        $sql = 'UPDATE orders SET status = ?' . ($timestampColumn ? ", {$timestampColumn} = NOW()" : '') . ' WHERE id = ?';
+        $sql = 'UPDATE orders SET status = ?' . ($timestampColumn ? ", {$timestampColumn} = NOW()" : '')
+            . ' WHERE id = ? AND status = ?';
 
         // Transaction : le changement de statut et sa trace dans order_events doivent réussir
         // ensemble, sinon la commande se retrouve dans un état muet (statut changé, aucun
         // historique de qui/quand) sans même que l'appelant reçoive une réponse cohérente.
+        //
+        // La clause `AND status = ?` rend la transition atomique : deux requêtes simultanées
+        // (le restaurateur sur deux onglets, un double-tap) ne peuvent pas franchir deux fois
+        // la même étape — et donc pas déclencher deux fois les virements sur "delivered".
         $db->beginTransaction();
 
         try {
-            $db->prepare($sql)->execute([$nextStatus, $order['id']]);
+            $update = $db->prepare($sql);
+            $update->execute([$nextStatus, $order['id'], $order['status']]);
+
+            if ($update->rowCount() === 0) {
+                $db->rollBack();
+
+                return JsonResponse::error($response, 409, 'Cette commande vient de changer de statut');
+            }
+
             $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, ?, ?)')
                 ->execute([$order['id'], $nextStatus, $role]);
             $db->commit();
@@ -352,6 +617,16 @@ final class OrderController
         }
 
         return JsonResponse::ok($response, ['order_id' => $order['id'], 'status' => $nextStatus]);
+    }
+
+    /**
+     * L'encaissement en ligne est-il effectivement branché sur cette instance ?
+     * Sans identifiants CinetPay, la plateforme tourne en mode démonstration/paiement à la
+     * livraison : aucune confirmation de paiement ne viendra jamais.
+     */
+    private function paymentRequired(): bool
+    {
+        return CinetPayClient::client() !== null;
     }
 
     private const STATUS_NOTIF = [
@@ -394,7 +669,8 @@ final class OrderController
              FROM driver_profiles dp
              JOIN driver_locations dl ON dl.driver_id = dp.user_id
              JOIN restaurants r ON r.id = ?
-             WHERE dp.is_online = 1 AND dl.updated_at >= (NOW() - INTERVAL 10 MINUTE)
+             WHERE dp.is_online = 1 AND dp.kyc_status = 'verified'
+               AND dl.updated_at >= (NOW() - INTERVAL 10 MINUTE)
              HAVING distance_km <= 5
              ORDER BY distance_km ASC
              LIMIT 5"
@@ -417,30 +693,53 @@ final class OrderController
     {
         $db = Database::connection();
         $driverId = (int) $request->getAttribute('user_id');
+        $orderId = (int) $routeArgs['id'];
+
+        // Une course n'est confiée qu'à un livreur dont la pièce d'identité a été validée.
+        // Le rôle "driver" est obtenu dès l'inscription : sans ce contrôle, un compte créé en
+        // trente secondes pouvait récupérer une commande, et donc l'adresse d'un client.
+        if (!$this->driverIsVerified($driverId)) {
+            return JsonResponse::error(
+                $response,
+                403,
+                'Vérification d\'identité requise',
+                'Ton identité doit être vérifiée avant de pouvoir prendre une course.'
+            );
+        }
 
         $stmt = $db->prepare(
             "UPDATE orders SET driver_id = ? WHERE id = ? AND status = 'ready_for_pickup' AND driver_id IS NULL"
         );
-        $stmt->execute([$driverId, $routeArgs['id']]);
+        $stmt->execute([$driverId, $orderId]);
 
         if ($stmt->rowCount() === 0) {
             return JsonResponse::error($response, 409, 'Commande déjà prise ou plus disponible');
         }
 
         $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "driver_assigned", "driver")')
-            ->execute([$routeArgs['id']]);
+            ->execute([$orderId]);
 
-        $restaurantId = $db->prepare('SELECT restaurant_id FROM orders WHERE id = ?');
-        $restaurantId->execute([$routeArgs['id']]);
-        $restaurantId = $restaurantId->fetchColumn();
+        $restaurantStmt = $db->prepare('SELECT restaurant_id FROM orders WHERE id = ?');
+        $restaurantStmt->execute([$orderId]);
+        $restaurantId = (int) $restaurantStmt->fetchColumn();
 
-        Realtime::trigger("private-order.{$routeArgs['id']}", 'driver-assigned', ['driver_id' => $driverId]);
+        Realtime::trigger("private-order.{$orderId}", 'driver-assigned', ['driver_id' => $driverId]);
         Realtime::trigger("private-restaurant.{$restaurantId}", 'order-updated', [
-            'order_id' => (int) $routeArgs['id'],
+            'order_id' => $orderId,
             'status' => 'ready_for_pickup',
         ]);
 
-        return JsonResponse::ok($response, ['order_id' => (int) $routeArgs['id'], 'driver_id' => $driverId]);
+        return JsonResponse::ok($response, ['order_id' => $orderId, 'driver_id' => $driverId]);
+    }
+
+    private function driverIsVerified(int $driverId): bool
+    {
+        $stmt = Database::connection()->prepare(
+            "SELECT 1 FROM driver_profiles WHERE user_id = ? AND kyc_status = 'verified'"
+        );
+        $stmt->execute([$driverId]);
+
+        return $stmt->fetch() !== false;
     }
 
     /** GET /restaurant/orders/live — file d'attente temps réel du back-office */
@@ -450,7 +749,8 @@ final class OrderController
         $db = Database::connection();
 
         $stmt = $db->prepare(
-            "SELECT o.id, o.status, o.total_cents, o.note_livreur, o.created_at, u.first_name AS client_first_name
+            "SELECT o.id, o.status, o.total_cents, o.payment_status, o.delivery_mode, o.note_livreur,
+                    o.created_at, u.first_name AS client_first_name
              FROM orders o
              JOIN restaurants r ON r.id = o.restaurant_id
              JOIN users u ON u.id = o.client_id
@@ -558,20 +858,59 @@ final class OrderController
         ]);
     }
 
-    /** GET /driver/orders/available — commandes prêtes, pas encore prises par un livreur. */
+    /**
+     * GET /driver/orders/available — commandes prêtes, pas encore prises par un livreur.
+     *
+     * L'adresse exacte du client n'apparaît qu'une fois la course acceptée (voir
+     * activeForDriver) : la liste publique des courses se contente du quartier. Sans cela,
+     * n'importe quel compte livreur consultait en continu les adresses de tous les clients
+     * de la ville sans jamais livrer.
+     */
     public function availableForDriver(Request $request, Response $response): Response
     {
         $db = Database::connection();
+        $driverId = (int) $request->getAttribute('user_id');
+
+        if (!$this->driverIsVerified($driverId)) {
+            return JsonResponse::ok($response, ['orders' => [], 'kyc_required' => true]);
+        }
 
         $stmt = $db->query(
-            "SELECT o.id, o.total_cents, o.delivery_fee_cents, o.adresse_livraison, o.ready_at,
+            "SELECT o.id, o.total_cents, o.delivery_fee_cents, o.delivery_mode, o.ready_at, o.adresse_livraison,
                     r.name AS restaurant_name, r.adresse AS restaurant_adresse
              FROM orders o JOIN restaurants r ON r.id = o.restaurant_id
              WHERE o.status = 'ready_for_pickup' AND o.driver_id IS NULL
-             ORDER BY o.ready_at ASC"
+             ORDER BY o.ready_at ASC
+             LIMIT 50"
         );
 
-        return JsonResponse::ok($response, ['orders' => $this->withItemSummaries($db, $stmt->fetchAll())]);
+        $orders = array_map(
+            function (array $order): array {
+                $order['delivery_area'] = self::coarseArea((string) $order['adresse_livraison']);
+                unset($order['adresse_livraison']);
+
+                return $order;
+            },
+            $stmt->fetchAll()
+        );
+
+        return JsonResponse::ok($response, ['orders' => $this->withItemSummaries($db, $orders)]);
+    }
+
+    /**
+     * Réduit une adresse à sa zone (« Rue des Jardins, Cocody, Abidjan » → « Cocody, Abidjan »).
+     * Assez précis pour qu'un livreur décide s'il prend la course, trop vague pour se présenter
+     * chez quelqu'un qui n'a rien commandé.
+     */
+    private static function coarseArea(string $address): string
+    {
+        $segments = array_values(array_filter(array_map('trim', explode(',', $address)), fn ($s) => $s !== ''));
+
+        if ($segments === []) {
+            return 'Zone non précisée';
+        }
+
+        return implode(', ', array_slice($segments, -2));
     }
 
     /** GET /driver/orders/active — la ou les livraisons en cours de ce livreur. */
@@ -624,7 +963,7 @@ final class OrderController
     private function findAccessibleOrder(Request $request, int $orderId): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT o.*, r.owner_id AS restaurant_owner_id, r.name AS restaurant_name
+            'SELECT ' . self::ORDER_COLUMNS . ', r.owner_id AS restaurant_owner_id, r.name AS restaurant_name
              FROM orders o JOIN restaurants r ON r.id = o.restaurant_id WHERE o.id = ?'
         );
         $stmt->execute([$orderId]);
@@ -660,16 +999,5 @@ final class OrderController
             (int) ($order['driver_id'] ?? 0) => 'driver',
             default => 'client',
         };
-    }
-
-    private function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $earthRadiusKm = 6371;
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        return $earthRadiusKm * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 }

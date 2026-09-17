@@ -3,6 +3,8 @@ import { requireLogin, logout, currentUser } from '../auth.js';
 import { formatMoney, escapeHtml } from '../format.js';
 import { pushSupported, subscribeToPush } from '../push.js';
 import { realtimeClient } from '../realtime.js';
+import { deliveryModeLabel } from '../status.js';
+import { renderEmpty, renderError, showToast } from '../ui.js';
 
 const NEXT_STATUS = {
   ready_for_pickup: { action: 'picked_up', label: 'Marquer récupérée' },
@@ -56,7 +58,16 @@ function reportLocation() {
 }
 
 async function goOnline() {
-  await apiFetch('/driver/status', { method: 'PATCH', body: { is_online: true } });
+  try {
+    await apiFetch('/driver/status', { method: 'PATCH', body: { is_online: true } });
+  } catch (error) {
+    // 403 = identité non vérifiée. Le serveur fait foi : la bascule ne doit pas passer au vert
+    // alors que le compte reste hors de la file de dispatch.
+    showToast(error.detail ?? error.message, { tone: 'error' });
+
+    return;
+  }
+
   document.getElementById('online-switch').className = 'sw on';
   document.getElementById('online-label').textContent = 'En ligne';
 
@@ -202,14 +213,20 @@ function activeOrderHtml(order) {
   `;
 }
 
+/**
+ * Course encore disponible. On affiche la ZONE de livraison, pas l'adresse exacte : celle-ci
+ * n'est transmise qu'une fois la course acceptée (voir OrderController::availableForDriver).
+ * Auparavant, tout compte livreur connecté consultait en continu l'adresse précise de tous
+ * les clients de la ville, sans jamais avoir à livrer quoi que ce soit.
+ */
 function availableOrderHtml(order) {
   return `
     <div class="cart-block">
       <p class="sechead" style="margin:14px 0 4px;">${escapeHtml(order.restaurant_name)}</p>
-      <p class="state-msg" style="padding:0 0 10px;">${escapeHtml(order.restaurant_adresse)} → ${escapeHtml(order.adresse_livraison)}</p>
-      <div class="sumrow"><span>Frais de livraison</span><span>${formatMoney(order.delivery_fee_cents)}</span></div>
-      <div class="sumrow"><span>Plats</span><span></span></div>
-      <p class="state-msg" style="padding:0 4px 10px;">${escapeHtml(order.items_summary)}</p>
+      <p class="state-msg" style="padding:0 0 10px;">${escapeHtml(order.restaurant_adresse)} → ${escapeHtml(order.delivery_area ?? 'Zone à confirmer')}</p>
+      ${order.delivery_mode === 'express' ? `<span class="pill warn">${escapeHtml(deliveryModeLabel(order.delivery_mode))}</span>` : ''}
+      <div class="sumrow"><span>Ta part</span><span>${formatMoney(order.delivery_fee_cents)}</span></div>
+      <p class="state-msg" style="padding:0 4px 10px;">${escapeHtml(order.items_summary ?? '')}</p>
     </div>
     <button class="btn btn-primary btn-block" data-claim="${order.id}" style="margin:0 20px 20px;width:calc(100% - 40px);">Prendre cette course</button>
   `;
@@ -230,12 +247,33 @@ async function refresh() {
     }
 
     title.textContent = 'Commandes disponibles';
-    const { orders: available } = await apiFetch('/driver/orders/available');
-    container.innerHTML = available.length
-      ? available.map(availableOrderHtml).join('')
-      : '<p class="state-msg">Aucune commande disponible pour le moment.</p>';
+    const available = await apiFetch('/driver/orders/available');
+
+    // L'API refuse la file des courses tant que l'identité n'est pas vérifiée : on l'explique
+    // plutôt que d'afficher « aucune commande », qui ferait croire à un manque d'activité.
+    if (available.kyc_required) {
+      renderEmpty(container, {
+        icon: '🪪',
+        title: 'Vérification en attente',
+        text: 'Ton identité doit être vérifiée avant de recevoir des courses. Envoie ta pièce d\'identité ci-dessus.',
+      });
+
+      return;
+    }
+
+    if (available.orders.length === 0) {
+      renderEmpty(container, {
+        icon: '🛵',
+        title: 'Aucune course pour le moment',
+        text: 'Reste en ligne : tu seras notifié dès qu\'une commande est prête près de toi.',
+      });
+
+      return;
+    }
+
+    container.innerHTML = available.orders.map(availableOrderHtml).join('');
   } catch (error) {
-    container.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    renderError(container, error, { onRetry: refresh });
   }
 }
 
@@ -249,8 +287,9 @@ document.getElementById('driver-content').addEventListener('click', async (event
       await apiFetch(`/orders/${claimBtn.dataset.claim}/claim`, { method: 'PATCH', body: {} });
       refresh();
     } catch (error) {
-      alert(error.detail ?? error.message);
+      showToast(error.detail ?? error.message, { tone: 'error' });
       claimBtn.disabled = false;
+      refresh();
     }
   }
 
@@ -263,7 +302,7 @@ document.getElementById('driver-content').addEventListener('click', async (event
       });
       refresh();
     } catch (error) {
-      alert(error.detail ?? error.message);
+      showToast(error.detail ?? error.message, { tone: 'error' });
       statusBtn.disabled = false;
     }
   }

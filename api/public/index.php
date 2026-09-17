@@ -30,14 +30,37 @@ $app->addBodyParsingMiddleware();
 $debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 $app->addErrorMiddleware($debug, true, true);
 
-// CORS pour le développement local (front et API sur des ports différents).
-$app->add(function ($request, $handler) {
+/**
+ * CORS — le front et l'API vivent sur deux origines différentes (ports distincts en local,
+ * sous-domaines en production).
+ *
+ * L'origine appelante est comparée à une liste blanche (CORS_ORIGIN, séparée par des virgules)
+ * et renvoyée telle quelle si elle en fait partie. Le repli précédent — `*` quand la variable
+ * n'est pas définie — ouvrait l'API à n'importe quelle page du web sur une instance mal
+ * configurée. `Vary: Origin` évite qu'un cache serve à un site l'autorisation obtenue par un autre.
+ */
+$allowedOrigins = array_values(array_filter(array_map(
+    'trim',
+    explode(',', $_ENV['CORS_ORIGIN'] ?? 'http://localhost:5500')
+)));
+
+$app->add(function ($request, $handler) use ($allowedOrigins) {
     $response = $handler->handle($request);
+    $origin = $request->getHeaderLine('Origin');
+
+    if ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
+        $response = $response->withHeader('Access-Control-Allow-Origin', $origin);
+    }
 
     return $response
-        ->withHeader('Access-Control-Allow-Origin', $_ENV['CORS_ORIGIN'] ?? '*')
+        ->withHeader('Vary', 'Origin')
         ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS')
+        ->withHeader('Access-Control-Max-Age', '600')
+        // Les réponses de l'API portent des données de compte : aucune ne doit être mise en
+        // cache par un intermédiaire partagé.
+        ->withHeader('Cache-Control', 'no-store')
+        ->withHeader('X-Content-Type-Options', 'nosniff');
 });
 $app->options('/{routes:.+}', fn ($request, $response) => $response);
 
@@ -75,6 +98,9 @@ $app->group('/api/v1', function ($group) use ($auth) {
         ->add($auth('restaurant_owner'));
 
     // Commandes — authentifié, rôle vérifié dans le contrôleur selon la partie prenante
+    // /orders/quote chiffre un panier sans rien créer : c'est la seule source du total affiché
+    // au client (le front n'additionne plus frais, TVA ni remises de son côté).
+    $group->post('/orders/quote', [OrderController::class, 'quote'])->add($auth('client'));
     $group->post('/orders', [OrderController::class, 'create'])->add($auth('client'));
     $group->get('/orders/mine', [OrderController::class, 'mine'])->add($auth('client'));
     $group->get('/recommendations/mine', [OrderController::class, 'recommendationForClient'])->add($auth('client'));

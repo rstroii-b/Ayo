@@ -1,6 +1,7 @@
 import { apiFetch, apiFetchBlob } from '../api.js';
 import { requireLogin, logout } from '../auth.js';
 import { escapeHtml } from '../format.js';
+import { renderError } from '../ui.js';
 
 const STATUS_LABEL = { pending: 'En attente', verified: 'Vérifié', rejected: 'Rejeté' };
 let currentDocumentUrl = null;
@@ -46,7 +47,7 @@ async function loadDrivers() {
       </div>
     `;
   } catch (error) {
-    list.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    renderError(list, error, { onRetry: () => loadDrivers() });
   }
 }
 
@@ -104,7 +105,7 @@ async function openModal(driverId) {
       decide(driverId, 'rejected', reason || undefined);
     });
   } catch (error) {
-    body.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    renderError(body, error);
   }
 }
 

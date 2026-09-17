@@ -1,27 +1,17 @@
 import { apiFetch } from '../api.js';
 import { addItem, getCart, cartSubtotalCents, cartItemCount } from '../cart.js';
 import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
+import { getCurrentPosition } from '../geolocation.js';
+import { openModal, renderError, showToast } from '../ui.js';
+
+// Même position de repli que l'accueil (Abidjan) : la fiche affiche ainsi les mêmes frais et
+// le même délai que la liste d'où l'on vient, au lieu d'une valeur par défaut différente.
+const FALLBACK_POSITION = { lat: 5.3600, lng: -4.0083 };
 
 const restaurantId = new URLSearchParams(window.location.search).get('id');
 let restaurantName = '';
 const itemsById = new Map();
-let toastTimer = null;
-
-function showToast(message) {
-  let toast = document.getElementById('ayo-toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'ayo-toast';
-    toast.setAttribute('role', 'status');
-    toast.setAttribute('aria-live', 'polite');
-    document.body.appendChild(toast);
-  }
-
-  toast.textContent = message;
-  toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
-}
+let closeItemModal = () => {};
 
 function renderCartBar() {
   const cart = getCart();
@@ -122,8 +112,11 @@ function menuItemHtml(item) {
 function ingredientsHtml(ingredients) {
   if (!ingredients) return '';
 
-  const items = ingredients.split(/[,
-]/).map((s) => s.trim()).filter(Boolean);
+  // Séparateurs : virgule ou retour à la ligne. Le saut de ligne DOIT être écrit \n :
+  // un vrai retour à la ligne à l'intérieur d'une expression régulière est une erreur de
+  // syntaxe JavaScript, et elle empêchait tout le module de se charger — la fiche commerce
+  // restait bloquée sur « Chargement… », menu compris.
+  const items = ingredients.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
   if (items.length === 0) return '';
 
   return `
@@ -134,28 +127,61 @@ function ingredientsHtml(ingredients) {
   `;
 }
 
+/**
+ * En-tête de la fiche commerce.
+ *
+ * Aucune valeur n'est inventée ici. La version précédente affichait
+ * `restaurant.rating ?? 4.8` et `review_count ?? 1200` : comme l'API ne renvoyait ni l'un ni
+ * l'autre, *tous* les commerces — y compris ceux ouverts le jour même — s'affichaient avec
+ * « ⭐ 4.8 · 1 200 avis ». Même chose pour les frais, plafonnés à un `?? 1500` sans rapport
+ * avec le tarif réel (minimum 1 000 FCFA autour d'Abidjan). Une note inventée n'est pas un
+ * détail cosmétique : c'est une information fausse sur laquelle le client décide.
+ *
+ * Un commerce sans avis est désormais annoncé comme tel ; les frais et le délai ne sont
+ * affichés que lorsque le serveur les a calculés pour la position du client.
+ */
 function restaurantHeaderHtml(restaurant) {
-  const rating = Number(restaurant.rating ?? 4.8);
-  const reviews = Number(restaurant.review_count ?? 1200);
-  const etaLow = Number(restaurant.eta_low_min ?? 20);
-  const etaHigh = Number(restaurant.eta_high_min ?? 30);
-  const deliveryFee = typeof restaurant.delivery_fee_cents !== 'undefined'
-    ? formatMoney(restaurant.delivery_fee_cents)
-    : 'Livraison gratuite';
+  const pills = [];
+
+  if (restaurant.review_count > 0 && restaurant.rating_avg !== null) {
+    const rating = Number(restaurant.rating_avg).toFixed(1).replace('.', ',');
+    const reviews = Number(restaurant.review_count).toLocaleString('fr-FR');
+    const plural = restaurant.review_count > 1 ? 'avis' : 'avis';
+    pills.push(`<span class="summary-pill rating">⭐ ${rating} · ${reviews} ${plural}</span>`);
+  } else {
+    pills.push('<span class="summary-pill new">Nouveau sur Ayo</span>');
+  }
+
+  if (restaurant.cuisine_origine) {
+    pills.push(`<span class="summary-pill">${escapeHtml(restaurant.cuisine_origine)}</span>`);
+  }
+
+  if (restaurant.eta_low_min) {
+    pills.push(`<span class="summary-pill">${restaurant.eta_low_min}–${restaurant.eta_high_min} min</span>`);
+  }
+
+  if (typeof restaurant.delivery_fee_cents === 'number') {
+    pills.push(`<span class="summary-pill">Livraison ${formatMoney(restaurant.delivery_fee_cents)}</span>`);
+  }
 
   return `
     <h1 class="title" style="margin-bottom:4px;">${escapeHtml(restaurant.name)}</h1>
-    <div class="restaurant-summary">
-      <span class="summary-pill rating">⭐ ${rating.toFixed(1)} · ${reviews.toLocaleString('fr-FR')} avis</span>
-      <span class="summary-pill">${escapeHtml(restaurant.cuisine_origine || 'Cuisine africaine')}</span>
-      <span class="summary-pill">${etaLow}-${etaHigh} min</span>
-      <span class="summary-pill">${deliveryFee}</span>
-    </div>
+    <div class="restaurant-summary">${pills.join('')}</div>
     <p class="state-msg" style="margin-top:8px;">${escapeHtml(restaurant.adresse)}</p>
   `;
 }
 
+/**
+ * Ouvre la fiche produit. Passe par ui.js::openModal : défilement de la page bloqué, focus
+ * déplacé dans la modale et piégé dedans, fermeture à l'Échap, focus rendu à l'élément
+ * d'origine. Auparavant la modale s'ouvrait en retirant simplement l'attribut `hidden` : au
+ * clavier, on continuait à tabuler dans le menu resté derrière, sans jamais l'atteindre.
+ */
 function openItemModal(item) {
+  // Un identifiant qui ne correspond à rien (menu rechargé entre-temps) ne doit pas faire
+  // planter le rendu de toute la page.
+  if (!item) return;
+
   const overlay = document.getElementById('item-modal-overlay');
   const photoUrl = safeImageUrl(item.photo_url);
 
@@ -172,14 +198,10 @@ function openItemModal(item) {
     </button>
   `;
 
-  overlay.hidden = false;
+  closeItemModal = openModal(overlay);
 }
 
-function closeItemModal() {
-  document.getElementById('item-modal-overlay').hidden = true;
-}
-
-document.getElementById('item-modal-close').addEventListener('click', closeItemModal);
+document.getElementById('item-modal-close').addEventListener('click', () => closeItemModal());
 document.getElementById('item-modal-overlay').addEventListener('click', (event) => {
   if (event.target.id === 'item-modal-overlay') closeItemModal();
 });
@@ -230,15 +252,43 @@ function updateVariantConfirmButton(panel) {
   confirmBtn.textContent = allGroupsChosen ? `Ajouter · ${formatMoney(priceCents)}` : 'Choisis une option';
 }
 
+/**
+ * Nom d'un article selon la catégorie du commerce. « 4 plats » sous le rayon d'un magasin de
+ * meubles ou d'un supermarché n'avait aucun sens — le libellé était écrit en dur, hérité de
+ * l'époque où Ayo ne faisait que de la restauration.
+ */
+const ITEM_NOUNS = {
+  food: ['plat', 'plats'],
+  fashion: ['article', 'articles'],
+  furniture: ['meuble', 'meubles'],
+  grocery: ['produit', 'produits'],
+};
+
+function itemCountLabel(count, businessType) {
+  const [singular, plural] = ITEM_NOUNS[businessType] ?? ITEM_NOUNS.food;
+
+  return `${count} ${count > 1 ? plural : singular}`;
+}
+
 async function load() {
+  const header = document.getElementById('restaurant-header');
+
   if (!restaurantId) {
-    document.getElementById('restaurant-header').innerHTML = '<p class="state-msg">Restaurant introuvable.</p>';
+    renderError(header, { status: 404, message: 'Commerce introuvable' }, {
+      title: 'Commerce introuvable',
+    });
+
     return;
   }
 
   try {
+    // La position sert au serveur à calculer les frais et le délai réels pour ce client :
+    // la fiche annonce alors le même montant que la liste et que le panier.
+    const position = await getCurrentPosition({ fallback: FALLBACK_POSITION });
+    const query = new URLSearchParams({ lat: position.lat, lng: position.lng });
+
     const [restaurant, menu] = await Promise.all([
-      apiFetch(`/restaurants/${restaurantId}`),
+      apiFetch(`/restaurants/${restaurantId}?${query}`),
       apiFetch(`/restaurants/${restaurantId}/menu`),
     ]);
 
@@ -250,30 +300,32 @@ async function load() {
       document.querySelector('.banner').style.backgroundImage = `url('${bannerPhoto}')`;
     }
 
-    document.getElementById('restaurant-header').innerHTML = restaurantHeaderHtml({
-      ...restaurant,
-      rating: restaurant.rating ?? 4.8,
-      review_count: restaurant.review_count ?? 1200,
-      eta_low_min: restaurant.eta_low_min ?? 20,
-      eta_high_min: restaurant.eta_high_min ?? 30,
-      delivery_fee_cents: restaurant.delivery_fee_cents ?? 1500,
-    });
+    // Les données partent telles quelles au rendu : aucune valeur de repli inventée.
+    header.innerHTML = restaurantHeaderHtml(restaurant);
 
     itemsById.clear();
     for (const category of menu.categories) {
       for (const item of category.items) itemsById.set(item.id, item);
     }
 
+    const businessType = menu.business_type ?? restaurant.business_type;
     const menuList = document.getElementById('menu-list');
-    menuList.innerHTML = menu.categories.length
-      ? menu.categories.map((category) => `
+    const filledCategories = menu.categories.filter((category) => category.items.length > 0);
+
+    menuList.innerHTML = filledCategories.length
+      ? filledCategories.map((category) => `
           <div class="menu-heading">
             <h2 class="sechead">${escapeHtml(category.name)}</h2>
-            <small>${category.items.length} plats</small>
+            <small>${itemCountLabel(category.items.length, businessType)}</small>
           </div>
           ${category.items.map((item) => menuItemHtml(item)).join('')}
         `).join('')
-      : '<p class="state-msg">Ce restaurant n\'a pas encore publié son menu.</p>';
+      : `
+        <div class="state state--empty">
+          <div class="state-icon" aria-hidden="true">🍽️</div>
+          <p class="state-title">Menu en préparation</p>
+          <p class="state-text">Ce commerce n'a pas encore publié ses articles. Reviens un peu plus tard.</p>
+        </div>`;
 
     menuList.addEventListener('click', (event) => {
       const openTarget = event.target.closest('[data-open-id]');
@@ -337,8 +389,12 @@ async function load() {
 
     renderCartBar();
   } catch (error) {
-    document.getElementById('restaurant-header').innerHTML =
-      `<p class="state-msg">Impossible de charger ce restaurant (${error.message}).</p>`;
+    // Message échappé et bouton « Réessayer » : une coupure réseau ne laisse plus la page
+    // vide sans issue, et le texte d'erreur n'est plus injecté brut dans le HTML.
+    renderError(header, error, {
+      title: 'Impossible d\'afficher ce commerce',
+      onRetry: load,
+    });
   }
 }
 

@@ -1,6 +1,7 @@
 import { apiFetch } from '../api.js';
 import { escapeHtml, formatMoney, safeImageUrl } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
+import { renderEmpty, renderError } from '../ui.js';
 
 // Position par défaut si la géolocalisation est refusée/indisponible (Abidjan) — sert de repli,
 // plus la position réelle pour trier par distance et estimer frais/délai de livraison.
@@ -16,6 +17,10 @@ const CATEGORY_COPY = {
 
 function restaurantCardHtml(restaurant, isFeatured) {
   const hasEstimate = restaurant.delivery_fee_cents !== undefined;
+  // MySQL renvoie les colonnes calculées en chaîne selon le pilote : `.toFixed()` sur une
+  // chaîne lève une TypeError et fait disparaître toute la liste. On convertit d'abord.
+  const distance = Number(restaurant.distance_km);
+  const distanceLabel = Number.isFinite(distance) && distance > 0 ? `${distance.toFixed(1)} km` : '';
   const photoUrl = safeImageUrl(restaurant.photo_url);
   const photoStyle = photoUrl ? ` style="background-image:url('${escapeHtml(photoUrl)}')"` : '';
 
@@ -28,9 +33,10 @@ function restaurantCardHtml(restaurant, isFeatured) {
           ${hasEstimate ? `<span class="rfee">${formatMoney(restaurant.delivery_fee_cents)}</span>` : ''}
         </div>
         ${restaurant.cuisine_origine ? `<span class="rtag">${escapeHtml(restaurant.cuisine_origine)}</span>` : ''}
+        ${restaurant.review_count > 0 ? `<span class="rmeta">⭐ ${String(restaurant.rating_avg).replace('.', ',')} (${restaurant.review_count})</span>` : ''}
         <div class="rmetarow">
-          ${restaurant.distance_km ? `${restaurant.distance_km.toFixed(1)} km` : ''}
-          ${restaurant.distance_km && hasEstimate ? '<span class="dotsep"></span>' : ''}
+          ${distanceLabel}
+          ${distanceLabel && hasEstimate ? '<span class="dotsep"></span>' : ''}
           ${hasEstimate ? `${restaurant.eta_low_min}–${restaurant.eta_high_min} min` : ''}
         </div>
       </div>
@@ -59,9 +65,17 @@ function skeletonHtml() {
   `;
 }
 
+/**
+ * Requête en cours. Une frappe rapide dans la recherche en déclenche plusieurs : sans
+ * annulation, la plus lente peut répondre en dernier et réafficher un résultat périmé —
+ * l'utilisateur voit alors les résultats d'une recherche qu'il a déjà corrigée.
+ */
+let pendingRequest = null;
+
 async function loadRestaurants({ businessType = 'food', region = '', q = '' } = {}) {
   const list = document.getElementById('restaurant-list');
   list.innerHTML = skeletonHtml();
+  list.setAttribute('aria-busy', 'true');
 
   if (userPosition === null) {
     userPosition = await getCurrentPosition({ fallback: FALLBACK_POSITION });
@@ -71,14 +85,33 @@ async function loadRestaurants({ businessType = 'food', region = '', q = '' } = 
   if (region) params.set('region', region);
   if (q) params.set('q', q);
 
-  try {
-    const { restaurants } = await apiFetch(`/restaurants?${params}`);
+  pendingRequest?.abort();
+  const controller = new AbortController();
+  pendingRequest = controller;
 
-    list.innerHTML = restaurants.length
-      ? `<div class="bento-grid">${restaurants.map((r, i) => restaurantCardHtml(r, i === 0)).join('')}</div>`
-      : `<p class="state-msg">${CATEGORY_COPY[businessType].empty}</p>`;
+  try {
+    const { restaurants } = await apiFetch(`/restaurants?${params}`, { signal: controller.signal });
+
+    list.removeAttribute('aria-busy');
+
+    if (restaurants.length === 0) {
+      renderEmpty(list, {
+        icon: '🔍',
+        title: 'Aucun résultat',
+        text: CATEGORY_COPY[businessType].empty,
+      });
+
+      return;
+    }
+
+    list.innerHTML = `<div class="bento-grid">${restaurants.map((r, i) => restaurantCardHtml(r, i === 0)).join('')}</div>`;
   } catch (error) {
-    list.innerHTML = `<p class="state-msg">Impossible de charger les commerces (${error.message}).</p>`;
+    if (controller.signal.aborted) return;
+
+    renderError(list, error, {
+      title: 'Impossible de charger les commerces',
+      onRetry: () => loadRestaurants({ businessType, region, q }),
+    });
   }
 }
 

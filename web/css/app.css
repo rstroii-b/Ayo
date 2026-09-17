@@ -1,10 +1,62 @@
 /* Design tokens — direction "néon sombre" choisie par le restaurateur après comparaison
-   de 3 pistes visuelles : fond quasi-noir, vert/sarcelle en accents lumineux (glow). */
+   de 3 pistes visuelles : fond quasi-noir, vert/sarcelle en accents lumineux (glow).
+
+   Ce bloc est la seule source de vérité du design : couleurs, espacements, rayons, tailles de
+   texte, durées. Les noms historiques (--bg, --surface, --ink…) sont conservés tels quels —
+   des centaines de règles s'en servent — et l'échelle ci-dessous les complète.
+
+   Règle de contribution : aucune valeur brute (#hex, px d'espacement, rayon) ne doit être
+   écrite ailleurs que dans ce bloc. Une couleur apparue en dur dans une page est un token
+   manquant, pas une exception. */
 :root{
+   /* — Couleurs de base — */
    --bg:#0A0A0C; --surface:#131417; --surface-alt:#1A1D22;
    --ink:#F2F4F5; --ink-dim:#8B93A0; --line:rgba(255,255,255,.08);
    --accent:#1FE586; --accent-deep:#139A5C; --chili:#FF4D5E; --cola:#2BEBD1; --herb:#1FE586;
    --on-accent:#06170F;
+
+   /* Aplats translucides dérivés des accents. --soft-green était utilisé par l'écran panier
+      sans avoir jamais été défini : les pastilles d'étape, l'icône d'adresse et le mode de
+      livraison sélectionné s'affichaient donc sans fond. */
+   --soft-green:rgba(31,229,134,.12);
+   --soft-teal:rgba(43,235,209,.10);
+   --soft-chili:rgba(255,77,94,.12);
+   --warn:#FFC63C;
+   --soft-warn:rgba(255,198,60,.10);
+   --line-strong:rgba(255,255,255,.16);
+   --overlay:rgba(6,7,9,.72);
+
+   /* — Espacements (échelle de 4) — */
+   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+   --sp-6:24px; --sp-7:32px; --sp-8:40px;
+
+   /* — Rayons — */
+   --r-xs:8px; --r-sm:12px; --r-md:14px; --r-lg:18px; --r-xl:24px; --r-pill:999px;
+
+   /* — Typographie — */
+   --font-body:'Sora', system-ui, sans-serif;
+   --font-display:'Bricolage Grotesque', sans-serif;
+   --font-mono:'IBM Plex Mono', monospace;
+   --fs-xs:11px; --fs-sm:12.5px; --fs-md:14px; --fs-lg:16px; --fs-xl:19px; --fs-2xl:23px;
+
+   /* — Mouvement — */
+   --dur-fast:.12s; --dur-base:.18s; --dur-slow:.3s;
+   --ease:cubic-bezier(.4,0,.2,1);
+
+   /* — Élévation — */
+   --shadow-sm:0 4px 14px -8px rgba(0,0,0,.7);
+   --shadow-md:0 18px 26px -18px rgba(0,0,0,.8);
+   --glow-accent:0 8px 22px -8px rgba(31,229,134,.55);
+
+   /* — Gabarit — */
+   --app-max-width:480px;
+   --nav-height:74px;
+   /* Cible tactile minimale recommandée (WCAG 2.5.5) — un bouton plus petit est une erreur
+      d'accessibilité, pas un choix esthétique. */
+   --tap-min:44px;
+
+   /* — Empilement — */
+   --z-nav:20; --z-sticky:30; --z-modal:60; --z-toast:80;
 }
 
 *{box-sizing:border-box;}
@@ -366,61 +418,3 @@ body{
 .step.todo .bar,.step.now .bar{background:var(--line);}
 .step .slbl{font-size:10px;color:var(--ink-dim);margin-top:6px;text-align:center;font-weight:600;}
 .step.now .slbl{color:var(--ink);}
-
-/* ---------- Restaurant detail UX ---------- */
-.restaurant-summary {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 9px;
-}
-
-.summary-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--ink-dim);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.summary-pill.rating {
-  background: rgba(255, 198, 60, 0.08);
-  border-color: rgba(255, 198, 60, 0.18);
-  color: #ffd76a;
-}
-
-#ayo-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 88px;
-  transform: translateX(-50%) translateY(12px);
-  opacity: 0;
-  pointer-events: none;
-  background: rgba(12, 14, 16, 0.95);
-  color: var(--ink);
-  border: 1px solid rgba(31, 229, 134, 0.18);
-  border-radius: 999px;
-  box-shadow: 0 18px 26px -18px rgba(0, 0, 0, 0.8);
-  padding: 10px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 80;
-}
-
-#ayo-toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  #ayo-toast {
-    transition: opacity 0.15s ease, transform 0.15s ease;
-  }
-}

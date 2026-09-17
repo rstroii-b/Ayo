@@ -1,0 +1,529 @@
+/* ============================================================================
+   Ayo — couche composants
+   ============================================================================
+
+   Chargée APRÈS app.css, jamais à sa place. app.css garde la base du design
+   "néon sombre" (tokens, gabarit, écrans) ; ce fichier n'ajoute que les briques
+   réutilisables et les états qui manquaient, et absorbe les règles qui vivaient
+   en double dans des balises <style> de page.
+
+   Découpage, dans cet ordre :
+     1. Accessibilité et confort tactile (transversal, s'applique à tout)
+     2. Feedback : états de chargement, vide, erreur
+     3. Toasts
+     4. Boutons, pastilles, badges
+     5. Cartes et listes
+     6. Formulaires
+     7. Modales
+     8. Écran commerce  (ex-<style> de restaurant.html)
+     9. Écran panier / checkout  (ex-<style> de panier.html)
+    10. Récapitulatif de prix
+    11. Pages de contenu (CGU, CGV, aide…)  (ex-<style> de 5 pages)
+
+   Aucune valeur brute ici : tout passe par les tokens de :root (app.css).
+   ========================================================================= */
+
+
+/* ============================================================================
+   1. Accessibilité et confort tactile
+   ========================================================================= */
+
+/* Anneau de focus visible au clavier, invisible à la souris. Sans lui, un
+   utilisateur naviguant au Tab ne sait pas où il se trouve : la plupart des
+   composants du projet sont des <button> sans style de focus. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+  border-radius:var(--r-xs);
+}
+
+/* Le focus par défaut des navigateurs reste supprimé uniquement à la souris. */
+:where(a, button, input, select, textarea):focus:not(:focus-visible){outline:none;}
+
+/* Cibles tactiles : 44px minimum (WCAG 2.5.5). Les boutons ronds du projet
+   (add-btn 30px, qty 18px) restent visuellement petits, mais leur zone
+   cliquable est étendue par un pseudo-élément — l'aspect ne change pas, le
+   doigt ne rate plus la cible. */
+.add-btn, .qty button, .icon-btn, .back-btn, .notif-btn, .item-modal-close{
+  position:relative;
+  touch-action:manipulation;
+}
+.add-btn::after, .qty button::after, .item-modal-close::after{
+  content:"";
+  position:absolute;
+  top:50%; left:50%;
+  width:var(--tap-min); height:var(--tap-min);
+  transform:translate(-50%, -50%);
+}
+
+/* Empêche le zoom automatique d'iOS à la mise au point d'un champ : Safari
+   zoome dès que la police du champ descend sous 16px, et l'écran reste ensuite
+   décadré. */
+.field input, .field select, .field textarea, .search input, .promo-input input{
+  font-size:max(16px, var(--fs-md));
+}
+
+/* Réservé aux lecteurs d'écran (libellés de contexte, annonces). */
+.sr-only{
+  position:absolute;
+  width:1px; height:1px;
+  padding:0; margin:-1px;
+  overflow:hidden;
+  clip-path:inset(50%);
+  white-space:nowrap;
+  border:0;
+}
+
+/* Lien d'évitement : première tabulation de chaque page, masqué tant qu'il n'a
+   pas le focus. */
+.skip-link{
+  position:absolute; top:var(--sp-2); left:var(--sp-2);
+  z-index:var(--z-toast);
+  padding:var(--sp-2) var(--sp-4);
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--accent); border-radius:var(--r-sm);
+  font-size:var(--fs-sm); font-weight:600; text-decoration:none;
+  transform:translateY(-200%);
+}
+.skip-link:focus{transform:translateY(0);}
+
+/* Respect du réglage système « réduire les animations ». app.css n'active déjà
+   ses animations que sous `prefers-reduced-motion: no-preference` ; cette règle
+   couvre en plus les transitions et tout ce qui serait ajouté par la suite. */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+
+/* Contraste renforcé : les bordures à 8 % d'opacité disparaissent pour
+   certaines vues, notamment en plein soleil sur un écran de téléphone. */
+@media (prefers-contrast: more){
+  :root{--line:rgba(255,255,255,.28); --ink-dim:#AEB6C2;}
+}
+
+
+/* ============================================================================
+   2. États : chargement, vide, erreur
+   ============================================================================
+   Chaque écran fabriquait son propre message ("Chargement…", une <p> grise, un
+   message d'erreur non échappé). Trois états, trois composants, partout pareil.
+   Rendus par web/js/ui.js. */
+
+.state{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:var(--sp-3);
+  padding:var(--sp-7) var(--sp-5);
+  text-align:center;
+}
+
+.state-icon{
+  width:52px; height:52px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:var(--r-lg);
+  background:var(--surface);
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  font-size:var(--fs-xl);
+}
+.state--error .state-icon{background:var(--soft-chili); border-color:var(--chili); color:var(--chili);}
+.state--empty .state-icon{background:var(--soft-teal); border-color:var(--line-strong); color:var(--cola);}
+
+.state-title{
+  margin:0;
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:var(--fs-lg);
+}
+
+.state-text{
+  margin:0;
+  max-width:34ch;
+  color:var(--ink-dim);
+  font-size:var(--fs-sm);
+  line-height:1.5;
+}
+
+.state-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; justify-content:center;}
+
+/* Bandeau d'erreur en ligne (au-dessus d'un formulaire, sous un bouton). */
+.alert{
+  display:flex;
+  gap:var(--sp-2);
+  align-items:flex-start;
+  padding:var(--sp-3) var(--sp-4);
+  border-radius:var(--r-sm);
+  font-size:var(--fs-sm);
+  line-height:1.45;
+  border:1px solid var(--line);
+  background:var(--surface);
+  color:var(--ink);
+}
+.alert--error{background:var(--soft-chili); border-color:var(--chili);}
+.alert--success{background:var(--soft-green); border-color:var(--accent);}
+.alert--info{background:var(--soft-teal); border-color:var(--cola);}
+.alert[hidden]{display:none;}
+
+/* Indicateur de chargement discret, pour un rafraîchissement en arrière-plan
+   qui ne doit pas faire disparaître le contenu déjà affiché. */
+.loading-bar{
+  position:relative;
+  height:2px;
+  overflow:hidden;
+  background:var(--surface-alt);
+  border-radius:var(--r-pill);
+}
+.loading-bar::after{
+  content:"";
+  position:absolute; inset:0;
+  background:linear-gradient(90deg, transparent, var(--accent), transparent);
+  transform:translateX(-100%);
+}
+@media (prefers-reduced-motion: no-preference){
+  .loading-bar::after{animation:loading-sweep 1.1s var(--ease) infinite;}
+}
+@keyframes loading-sweep{to{transform:translateX(100%);}}
+
+/* Squelettes supplémentaires : ligne générique et bloc de carte plein format. */
+.skel-block{border-radius:var(--r-lg); height:96px;}
+
+
+/* ============================================================================
+   3. Toasts
+   ============================================================================
+   Confirmation brève d'une action (« ajouté au panier »). Zone live pour les
+   lecteurs d'écran : l'information ne doit pas être réservée aux voyants. */
+
+.toast{
+  position:fixed;
+  left:50%;
+  bottom:calc(var(--nav-height) + var(--sp-3));
+  transform:translateX(-50%) translateY(12px);
+  z-index:var(--z-toast);
+  max-width:min(340px, calc(100vw - 2 * var(--sp-5)));
+  padding:var(--sp-3) var(--sp-4);
+  border-radius:var(--r-pill);
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  box-shadow:var(--shadow-md);
+  color:var(--ink);
+  font-size:var(--fs-sm);
+  font-weight:600;
+  text-align:center;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+.toast--success{border-color:var(--accent);}
+.toast--error{border-color:var(--chili);}
+
+
+/* ============================================================================
+   4. Boutons, pastilles, badges
+   ========================================================================= */
+
+/* Variantes complétant .btn / .btn-primary / .btn-ghost d'app.css. */
+.btn-danger{background:var(--chili); color:#fff;}
+.btn-quiet{background:transparent; border:1px solid var(--line); color:var(--ink-dim);}
+.btn-sm{padding:var(--sp-2) var(--sp-4); font-size:var(--fs-sm);}
+
+/* État « action en cours » : le bouton reste lisible et annonce son occupation
+   aux technologies d'assistance, au lieu d'un simple texte remplacé. */
+.btn[aria-busy="true"]{
+  opacity:.75;
+  cursor:progress;
+  pointer-events:none;
+}
+.btn[aria-busy="true"]::before{
+  content:"";
+  width:14px; height:14px;
+  border-radius:50%;
+  border:2px solid currentColor;
+  border-top-color:transparent;
+  flex-shrink:0;
+}
+@media (prefers-reduced-motion: no-preference){
+  .btn[aria-busy="true"]::before{animation:btn-spin .7s linear infinite;}
+}
+@keyframes btn-spin{to{transform:rotate(360deg);}}
+
+/* Pastille d'état. Définie ici et plus seulement dans backoffice.css :
+   l'application livreur s'en sert (« Identité vérifiée ») sans charger la
+   feuille du back-office, la pastille s'affichait donc sans style. */
+.pill{
+  display:inline-flex; align-items:center; gap:var(--sp-2);
+  padding:7px 13px;
+  border-radius:var(--r-pill);
+  font-size:var(--fs-sm); font-weight:700;
+  background:var(--surface-alt); color:var(--ink-dim);
+}
+.pill.ok{background:var(--soft-green); color:var(--herb); box-shadow:0 0 0 1px rgba(31,229,134,.3) inset;}
+.pill.warn{background:var(--soft-warn); color:var(--warn); box-shadow:0 0 0 1px rgba(255,198,60,.3) inset;}
+.pill.danger{background:var(--soft-chili); color:var(--chili); box-shadow:0 0 0 1px rgba(255,77,94,.3) inset;}
+
+/* Badge de statut de commande — un seul jeu de couleurs pour tous les écrans
+   (accueil, historique, suivi, back-office), aligné sur web/js/status.js. */
+.status-badge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:3px var(--sp-2);
+  border-radius:var(--r-pill);
+  font-size:var(--fs-xs); font-weight:700;
+  background:var(--surface-alt); color:var(--ink-dim);
+  white-space:nowrap;
+}
+.status-badge::before{
+  content:"";
+  width:6px; height:6px;
+  border-radius:50%;
+  background:currentColor;
+  flex-shrink:0;
+}
+.status-badge[data-tone="live"]{background:var(--soft-green); color:var(--herb);}
+.status-badge[data-tone="wait"]{background:var(--soft-warn); color:var(--warn);}
+.status-badge[data-tone="done"]{background:var(--surface-alt); color:var(--ink-dim);}
+.status-badge[data-tone="cancelled"]{background:var(--soft-chili); color:var(--chili);}
+
+
+/* ============================================================================
+   5. Cartes et listes
+   ========================================================================= */
+
+/* Carte générique. .cart-block (app.css) reste l'implémentation historique du
+   panier ; .card est son équivalent neutre pour les nouveaux blocs. */
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  padding:var(--sp-4);
+}
+.card + .card{margin-top:var(--sp-3);}
+.card-title{
+  margin:0 0 var(--sp-2);
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:var(--fs-md);
+}
+
+
+/* ============================================================================
+   6. Formulaires
+   ========================================================================= */
+
+/* Message d'aide et message d'erreur rattachés à un champ. Le champ en erreur
+   porte aria-invalid="true" : la bordure rouge n'est pas la seule indication,
+   elle est aussi annoncée. */
+.field-hint{font-size:var(--fs-xs); color:var(--ink-dim); line-height:1.4;}
+.field-error{font-size:var(--fs-xs); color:var(--chili); line-height:1.4;}
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"]{border-color:var(--chili);}
+
+/* Champ désactivé — état qui n'existait nulle part et rendait un formulaire en
+   cours d'envoi indistinguable d'un formulaire actif. */
+.field input:disabled, .field select:disabled, .promo-input input:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+
+/* ============================================================================
+   7. Modales
+   ========================================================================= */
+
+/* Bloque le défilement de la page derrière une modale ouverte : sans cela, le
+   fond défile sous le doigt au lieu du contenu de la modale. */
+body.modal-open{overflow:hidden;}
+
+/* Le contenu de la modale reste atteignable au clavier et le bouton de
+   fermeture garde une cible tactile confortable (voir section 1). */
+.item-modal:focus{outline:none;}
+
+
+/* ============================================================================
+   8. Écran commerce (fiche restaurant)
+   ============================================================================
+   Ces règles vivaient dans une balise <style> de restaurant.html, en double
+   partiel avec app.css. Une seule définition, ici. */
+
+.restaurant-summary{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:var(--sp-2);
+  margin-top:9px;
+}
+
+.summary-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:var(--r-pill);
+  background:var(--surface);
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  font-size:var(--fs-xs);
+  font-weight:600;
+}
+.summary-pill.rating{
+  background:var(--soft-warn);
+  border-color:rgba(255,198,60,.18);
+  color:#ffd76a;
+}
+/* Commerce sans avis : on l'annonce, on n'invente pas une note. */
+.summary-pill.new{background:var(--soft-teal); border-color:rgba(43,235,209,.2); color:var(--cola);}
+
+.menu-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--sp-3);
+  margin:var(--sp-5) var(--sp-5) var(--sp-1);
+}
+.menu-heading .sechead{margin:0;}
+.menu-heading small{font-size:var(--fs-xs); color:var(--ink-dim);}
+
+
+/* ============================================================================
+   9. Écran panier / checkout
+   ============================================================================
+   Ex-balise <style> de panier.html. Ses règles s'appuyaient sur --soft-green,
+   qui n'était défini nulle part : pastilles d'étape, icône d'adresse et mode de
+   livraison sélectionné s'affichaient sans fond. Le token existe désormais
+   dans :root (app.css). */
+
+.checkout-intro{padding:var(--sp-5) var(--sp-5) var(--sp-1);}
+.checkout-intro h1{
+  margin:0 0 5px;
+  font-family:var(--font-display);
+  font-weight:800;
+  font-size:25px;
+  line-height:1.15;
+  letter-spacing:-.02em;
+}
+.checkout-intro p{margin:0; color:var(--ink-dim); font-size:var(--fs-sm);}
+
+.checkout-section-title{
+  display:flex;
+  align-items:center;
+  gap:var(--sp-2);
+  margin:var(--sp-6) var(--sp-5) var(--sp-3);
+  font-size:var(--fs-md);
+  font-weight:700;
+}
+.checkout-section-title span{
+  display:flex; align-items:center; justify-content:center;
+  width:25px; height:25px;
+  border-radius:50%;
+  background:var(--soft-green);
+  color:var(--accent);
+  font-size:var(--fs-xs);
+  flex-shrink:0;
+}
+
+.address-card{display:flex; align-items:center; gap:var(--sp-3);}
+.address-card .address-icon{
+  width:36px; height:36px;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+  border-radius:var(--r-sm);
+  background:var(--soft-green);
+  color:var(--accent);
+}
+.address-card .field{flex:1; padding:0 !important;}
+
+.delivery-choice{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-2); margin-top:var(--sp-3);}
+.delivery-choice label{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  padding:11px;
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  background:var(--surface-alt);
+  font-size:var(--fs-sm);
+  font-weight:700;
+  cursor:pointer;
+  min-height:var(--tap-min);
+}
+.delivery-choice label:has(input:checked){border-color:var(--accent); background:var(--soft-green);}
+/* Repli pour les navigateurs sans :has() — le focus clavier reste visible. */
+.delivery-choice label:focus-within{border-color:var(--accent);}
+.delivery-choice small{font-size:10px; color:var(--ink-dim); font-weight:400;}
+.delivery-choice input{accent-color:var(--accent);}
+
+.promo-input{display:flex; gap:var(--sp-2); margin-top:var(--sp-3);}
+.promo-input input{
+  flex:1; min-width:0;
+  background:var(--surface-alt);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+  padding:11px var(--sp-3);
+  color:var(--ink);
+  font-family:var(--font-body);
+  text-transform:uppercase;
+}
+.promo-input button{
+  padding:var(--sp-3);
+  min-width:var(--tap-min);
+  border-radius:var(--r-sm);
+  background:var(--surface-alt);
+  border:1px solid var(--line);
+  color:var(--accent);
+  font-family:var(--font-body);
+  font-weight:600;
+  font-size:var(--fs-sm);
+  cursor:pointer;
+}
+
+.checkout-note{margin:var(--sp-2) var(--sp-1) 0; color:var(--ink-dim); font-size:var(--fs-xs); line-height:1.45;}
+
+
+/* ============================================================================
+   10. Récapitulatif de prix
+   ============================================================================
+   .sumrow (app.css) reste la ligne de base ; ces variantes distinguent une
+   remise d'un frais, et signalent que le total affiché vient du serveur. */
+
+.sumrow.discount span:last-child{color:var(--accent);}
+.sumrow.muted span{color:var(--ink-dim);}
+
+/* Le total est « en cours de recalcul » tant que le serveur n'a pas répondu :
+   mieux vaut un montant grisé qu'un montant faux affiché comme définitif. */
+.sumrow.total.is-stale span:last-child{opacity:.45;}
+
+
+/* ============================================================================
+   11. Pages de contenu (CGU, CGV, mentions légales, confidentialité, aide)
+   ============================================================================
+   Le même bloc de règles était recopié à l'identique dans cinq balises <style>
+   (`.sec` quatre fois, `.faq` qui n'en était qu'un alias). Une seule définition
+   ici : corriger la lisibilité d'un texte légal ne demande plus cinq édits. */
+
+.sec, .faq{margin-bottom:var(--sp-6);}
+
+.sec h2, .faq h2{
+  margin:0 0 6px;
+  font-family:var(--font-display);
+  font-size:14.5px;
+  font-weight:700;
+}
+
+.sec p, .sec li, .faq p{
+  margin:0;
+  color:var(--ink-dim);
+  font-size:13.5px;
+  line-height:1.6;
+}
+
+.sec ul{margin:0; padding-left:18px;}
+.sec li + li{margin-top:var(--sp-1);}
+
+/* Information à compléter avant mise en ligne (raison sociale, RCCM, adresse…) :
+   signalée en rouge pour qu'aucun gabarit ne parte en production tel quel. */
+.ph{color:var(--chili); font-weight:600;}

@@ -9,36 +9,82 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
 use Saveurs\Support\Jwt;
+use Saveurs\Support\RateLimiter;
+use Saveurs\Support\ValidationException;
+use Saveurs\Support\Validator;
 
 final class AuthController
 {
+    private const ROLES = ['client', 'restaurant_owner', 'driver'];
+    private const VEHICLE_TYPES = ['velo', 'scooter', 'voiture', 'moto'];
+
+    /**
+     * Longueur maximale du mot de passe. bcrypt ignore au-delà de 72 octets : accepter plus
+     * long donnerait l'illusion d'un secret plus fort qu'il ne l'est réellement.
+     */
+    private const PASSWORD_MIN = 8;
+    private const PASSWORD_MAX = 72;
+
+    /**
+     * Haché factice comparé quand l'email n'existe pas, au même coût bcrypt que les vrais
+     * (coût 12, valeur par défaut de PASSWORD_BCRYPT ici) : le temps de réponse est alors le
+     * même qu'un compte existe ou non. Sans lui, un « identifiants invalides » instantané
+     * signalait « cet email n'est pas chez nous » et le login devenait un annuaire.
+     */
+    private const TIMING_DUMMY_HASH = '$2y$12$0n971CETy4DrkZ1qwGwuueZGfqay4kV10zyWrcfAMBt3OlyAJKy4O';
+
     public function register(Request $request, Response $response): Response
     {
         $body = (array) $request->getParsedBody();
+        $ip = RateLimiter::clientIp($request);
 
-        foreach (['email', 'password', 'first_name', 'last_name', 'role'] as $field) {
-            if (empty($body[$field]) || !is_string($body[$field])) {
-                return JsonResponse::error($response, 422, 'Champ manquant', $field);
-            }
+        // Même plafond que la connexion : sans lui, la création de comptes en masse est
+        // gratuite (et sert ensuite à sonder les endpoints authentifiés).
+        if (($retryAfter = RateLimiter::retryAfter('register', $ip, $ip)) !== null) {
+            return $this->tooManyAttempts($response, $retryAfter);
         }
 
-        if (strlen($body['password']) < 8) {
-            return JsonResponse::error($response, 422, 'Le mot de passe doit contenir au moins 8 caractères');
+        try {
+            $email = Validator::str($body, 'email', 190);
+            $firstName = Validator::str($body, 'first_name', 100);
+            $lastName = Validator::str($body, 'last_name', 100);
+            $role = Validator::enum($body, 'role', self::ROLES);
+            $phone = Validator::optionalPhone($body);
+            $rccm = Validator::optionalStr($body, 'rccm', 50);
+            $vehicleType = Validator::optionalEnum($body, 'vehicule_type', self::VEHICLE_TYPES, 'velo');
+        } catch (ValidationException $e) {
+            return JsonResponse::error($response, 422, $e->getMessage(), $e->field);
         }
 
-        if (!filter_var($body['email'], FILTER_VALIDATE_EMAIL)) {
+        $password = $body['password'] ?? null;
+
+        if (!is_string($password) || strlen($password) < self::PASSWORD_MIN) {
+            return JsonResponse::error(
+                $response,
+                422,
+                'Le mot de passe doit contenir au moins ' . self::PASSWORD_MIN . ' caractères'
+            );
+        }
+
+        if (strlen($password) > self::PASSWORD_MAX) {
+            return JsonResponse::error(
+                $response,
+                422,
+                'Le mot de passe ne peut pas dépasser ' . self::PASSWORD_MAX . ' caractères'
+            );
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return JsonResponse::error($response, 422, 'Adresse email invalide');
-        }
-
-        if (!in_array($body['role'], ['client', 'restaurant_owner', 'driver'], true)) {
-            return JsonResponse::error($response, 422, 'Rôle invalide');
         }
 
         $db = Database::connection();
 
         $exists = $db->prepare('SELECT id FROM users WHERE email = ?');
-        $exists->execute([$body['email']]);
+        $exists->execute([$email]);
         if ($exists->fetch() !== false) {
+            RateLimiter::record('register', $ip, $ip, false);
+
             return JsonResponse::error($response, 409, 'Un compte existe déjà avec cet email');
         }
 
@@ -50,21 +96,21 @@ final class AuthController
                  VALUES (?, ?, ?, ?, ?, ?)'
             );
             $stmt->execute([
-                $body['email'],
-                $body['phone'] ?? null,
-                password_hash($body['password'], PASSWORD_BCRYPT),
-                $body['first_name'],
-                $body['last_name'],
-                $body['role'],
+                $email,
+                $phone,
+                password_hash($password, PASSWORD_BCRYPT),
+                $firstName,
+                $lastName,
+                $role,
             ]);
 
             $userId = (int) $db->lastInsertId();
 
-            if ($body['role'] === 'driver') {
+            if ($role === 'driver') {
                 // RCCM facultatif (voir CGU §2) — beaucoup de livreurs indépendants n'en ont pas encore.
                 $db->prepare(
                     'INSERT INTO driver_profiles (user_id, rccm, vehicule_type) VALUES (?, ?, ?)'
-                )->execute([$userId, empty($body['rccm']) ? null : $body['rccm'], $body['vehicule_type'] ?? 'velo']);
+                )->execute([$userId, $rccm, $vehicleType]);
             }
 
             $db->commit();
@@ -73,9 +119,11 @@ final class AuthController
             throw $e;
         }
 
+        RateLimiter::record('register', $ip, $ip, true);
+
         return JsonResponse::ok($response, [
             'user_id' => $userId,
-            'token' => Jwt::issue($userId, $body['role']),
+            'token' => Jwt::issue($userId, $role),
         ], 201);
     }
 
@@ -87,14 +135,31 @@ final class AuthController
             return JsonResponse::error($response, 422, 'Email et mot de passe requis');
         }
 
+        $email = trim($body['email']);
+        $identifier = mb_strtolower($email);
+        $ip = RateLimiter::clientIp($request);
+
+        if (($retryAfter = RateLimiter::retryAfter('login', $identifier, $ip)) !== null) {
+            return $this->tooManyAttempts($response, $retryAfter);
+        }
+
         $db = Database::connection();
         $stmt = $db->prepare('SELECT id, password_hash, role FROM users WHERE email = ?');
-        $stmt->execute([$body['email']]);
+        $stmt->execute([$email]);
         $user = $stmt->fetch();
 
-        if ($user === false || !password_verify($body['password'], $user['password_hash'])) {
+        // Le hachage est exécuté même sans compte correspondant : sinon, le temps de réponse
+        // dit à l'attaquant si l'email existe, ce qui transforme le login en annuaire.
+        $hash = $user === false ? self::TIMING_DUMMY_HASH : $user['password_hash'];
+        $passwordOk = password_verify($body['password'], $hash);
+
+        if ($user === false || !$passwordOk) {
+            RateLimiter::record('login', $identifier, $ip, false);
+
             return JsonResponse::error($response, 401, 'Identifiants invalides');
         }
+
+        RateLimiter::record('login', $identifier, $ip, true);
 
         return JsonResponse::ok($response, [
             'user_id' => (int) $user['id'],
@@ -119,9 +184,12 @@ final class AuthController
     }
 
     /**
-     * Réémet un jeton tant que l'actuel est encore valide.
-     * Squelette volontairement simple — une vraie rotation de refresh
-     * token (table dédiée, révocation) est à ajouter avant la prod.
+     * Réémet un jeton tant que l'actuel est valide ET que la session n'a pas dépassé sa durée
+     * absolue (voir Jwt::issue). Le rôle est relu en base plutôt que recopié du jeton : un
+     * compte rétrogradé ne doit pas conserver ses anciens droits jusqu'à l'expiration.
+     *
+     * Une vraie rotation de refresh token (table dédiée, révocation ciblée d'un appareil)
+     * reste à ajouter — voir SECURITY-REVIEW.md, point « sessions ».
      */
     public function refresh(Request $request, Response $response): Response
     {
@@ -137,8 +205,26 @@ final class AuthController
             return JsonResponse::error($response, 401, 'Jeton invalide ou expiré');
         }
 
+        $stmt = Database::connection()->prepare('SELECT role FROM users WHERE id = ?');
+        $stmt->execute([$claims['sub']]);
+        $role = $stmt->fetchColumn();
+
+        if ($role === false) {
+            return JsonResponse::error($response, 401, 'Compte introuvable');
+        }
+
         return JsonResponse::ok($response, [
-            'token' => Jwt::issue($claims['sub'], $claims['role']),
+            'token' => Jwt::issue($claims['sub'], (string) $role, $claims['sid_iat']),
         ]);
+    }
+
+    private function tooManyAttempts(Response $response, int $retryAfter): Response
+    {
+        return JsonResponse::error(
+            $response,
+            429,
+            'Trop de tentatives',
+            'Réessaie dans ' . max(1, (int) ceil($retryAfter / 60)) . ' minute(s).'
+        )->withHeader('Retry-After', (string) $retryAfter);
     }
 }

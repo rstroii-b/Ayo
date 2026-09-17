@@ -20,7 +20,13 @@ qui appelle vraiment l'API en CORS).
 mysqld --console                     # démarre le serveur (garder ouvert, ou l'installer comme service Windows)
 mysql -u root -e "CREATE DATABASE saveurs CHARACTER SET utf8mb4"
 mysql -u root saveurs < database/schema.sql
+mysql -u root saveurs < database/migrations/001_marketplace_features.sql
+mysql -u root saveurs < database/migrations/002_security_and_pricing.sql
 ```
+
+Les deux migrations sont **obligatoires**, y compris sur une base neuve : `schema.sql` décrit
+le schéma d'origine, les coupons, l'état de paiement et le journal anti-force brute vivent dans
+les migrations. Voir `database/migrations/README.md`.
 
 Mot de passe root laissé vide par l'installateur (`mysqld --install` pour l'enregistrer comme
 service Windows ; `mysql_secure_installation` pour fixer un mot de passe avant toute mise en ligne).
@@ -173,6 +179,48 @@ Le sous-domaine dédié, pointé précisément sur `api/public/`, évite ce prob
 Pas de service à faire tourner en arrière-plan (pas de queue, pas de WebSocket dans ce squelette)
 — l'hébergement mutualisé classique (PHP-FPM + Apache, sur requête) suffit tel quel.
 
+## 7. Tests
+
+Deux suites, sans dépendance à installer :
+
+```bash
+php api/tests/run.php        # prix, validation d'entrées, transitions de statut
+cd web && npm test           # échappement HTML, panier, libellés de statut
+```
+
+Avant chaque commit, la vérification qui aurait évité la panne de la fiche commerce :
+
+```bash
+for f in $(find api/src api/public -name '*.php'); do php -l "$f"; done
+for f in $(find web/js -name '*.js'); do node --check "$f"; done
+```
+
+Tests de fumée, feuille de route et points de vigilance : **`TESTING.md`**.
+Revue de sécurité et arbitrages restants : **`SECURITY-REVIEW.md`**.
+
+## 8. Architecture du front
+
+Pas de build, pas de framework : modules ES natifs servis tels quels.
+
+```
+web/css/app.css          tokens (:root) + base du design « néon sombre » + écrans
+web/css/components.css   couche composants : états, toasts, boutons, modales, a11y
+web/css/backoffice.css   layout desktop du back-office uniquement
+web/js/format.js         échappement HTML, URL d'image sûres, formatage monétaire
+web/js/status.js         libellés de statut — source unique, partagée par tous les écrans
+web/js/ui.js             toasts, états chargement/vide/erreur, modale accessible
+web/js/api.js            client HTTP : jeton, idempotence, expiration, nouvel essai
+web/js/pages/*.js        un module par écran, rien de partagé en double
+```
+
+Deux règles de contribution :
+
+1. **Aucune valeur brute dans une page.** Couleurs, espacements, rayons et tailles de texte
+   viennent du bloc `:root` d'`app.css`. Une couleur écrite en dur est un token manquant.
+2. **Le navigateur n'invente ni prix ni note.** Tout montant affiché vient du serveur
+   (`POST /orders/quote` pour le panier). Toute note vient des avis réels : un commerce sans
+   avis affiche « Nouveau sur Ayo », jamais une valeur de repli.
+
 ## Ce qui est fait / pas fait
 
 Fait : inscription/connexion (JWT), liste + fiche + menu restaurant, création de restaurant,
@@ -183,7 +231,12 @@ mobile money (restaurant + livreur), paiement CinetPay (page hébergée), webhoo
 virements mobile money à la livraison, vérification KYC des livreurs (upload de pièce
 d'identité, revue/approbation par un panel admin minimal).
 
+Ajouté depuis : calcul de commande unifié côté serveur (`POST /orders/quote`), coupons
+validés et consommés en base, état de paiement porté par la commande, KYC obligatoire pour
+livrer, plafonnement des tentatives de connexion, durée de session absolue, design system
+centralisé et couche de composants partagée, deux suites de tests exécutables.
+
 Pas fait (sprints suivants, voir le document d'architecture §9) : diffusion temps réel via
-Soketi/WebSocket (le front doit recharger pour voir un changement de statut), dispatch
-automatique par proximité (le livreur "prend" une commande manuellement, pas de géolocalisation
-Redis), refresh token avec révocation réelle.
+Soketi/WebSocket, dispatch automatique par proximité avec géolocalisation Redis, refresh token
+avec révocation réelle, confirmation de livraison par code. Les points restants sont listés,
+avec leur sévérité, dans `SECURITY-REVIEW.md` §3.
