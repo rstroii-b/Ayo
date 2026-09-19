@@ -77,8 +77,22 @@ final class DriverController
             return JsonResponse::error($response, 422, 'is_online requis');
         }
 
-        Database::connection()->prepare('UPDATE driver_profiles SET is_online = ? WHERE user_id = ?')
-            ->execute([$body['is_online'] ? 1 : 0, $request->getAttribute('user_id')]);
+        $driverId = (int) $request->getAttribute('user_id');
+        $db = Database::connection();
+
+        // KYC opposable (M-2) : un livreur non vérifié ne passe pas "en ligne" — il n'apparaîtrait
+        // sinon dans aucun dispatch mais pourrait déjà réclamer des courses (verrou porté aussi par
+        // claim()). On garde la cohérence à la source plutôt que de compter sur un seul point.
+        if ($body['is_online']) {
+            $kyc = $db->prepare('SELECT kyc_status FROM driver_profiles WHERE user_id = ?');
+            $kyc->execute([$driverId]);
+            if ($kyc->fetchColumn() !== 'verified') {
+                return JsonResponse::error($response, 403, 'Compte livreur non vérifié', "Votre pièce d'identité doit être validée avant de passer en ligne.");
+            }
+        }
+
+        $db->prepare('UPDATE driver_profiles SET is_online = ? WHERE user_id = ?')
+            ->execute([$body['is_online'] ? 1 : 0, $driverId]);
 
         return JsonResponse::ok($response, ['is_online' => (bool) $body['is_online']]);
     }
@@ -92,7 +106,11 @@ final class DriverController
             return JsonResponse::error($response, 422, 'lat et lng requis');
         }
 
-        $driverId = $request->getAttribute('user_id');
+        $driverId = (int) $request->getAttribute('user_id');
+
+        // Détection avant l'écrasement de la dernière position : on compare le saut GPS (position
+        // falsifiée = vitesse surhumaine). Ne bloque pas l'envoi, lève une alerte.
+        \Saveurs\Services\FraudDetector::onDriverLocation($driverId, (float) $body['lat'], (float) $body['lng']);
 
         Database::connection()->prepare(
             'INSERT INTO driver_locations (driver_id, lat, lng) VALUES (?, ?, ?)

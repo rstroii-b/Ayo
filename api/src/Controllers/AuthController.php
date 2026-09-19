@@ -6,9 +6,11 @@ namespace Saveurs\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\FraudDetector;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
 use Saveurs\Support\Jwt;
+use Saveurs\Support\RequestContext;
 
 final class AuthController
 {
@@ -73,6 +75,8 @@ final class AuthController
             throw $e;
         }
 
+        FraudDetector::record('register', $userId, RequestContext::ip($request), RequestContext::userAgent($request), ['role' => $body['role']]);
+
         return JsonResponse::ok($response, [
             'user_id' => $userId,
             'token' => Jwt::issue($userId, $body['role']),
@@ -88,13 +92,19 @@ final class AuthController
         }
 
         $db = Database::connection();
-        $stmt = $db->prepare('SELECT id, password_hash, role FROM users WHERE email = ?');
+        $stmt = $db->prepare('SELECT id, password_hash, role, is_active FROM users WHERE email = ?');
         $stmt->execute([$body['email']]);
         $user = $stmt->fetch();
 
         if ($user === false || !password_verify($body['password'], $user['password_hash'])) {
             return JsonResponse::error($response, 401, 'Identifiants invalides');
         }
+
+        if ((int) $user['is_active'] !== 1) {
+            return JsonResponse::error($response, 403, 'Compte désactivé');
+        }
+
+        FraudDetector::record('login', (int) $user['id'], RequestContext::ip($request), RequestContext::userAgent($request), []);
 
         return JsonResponse::ok($response, [
             'user_id' => (int) $user['id'],
@@ -120,8 +130,11 @@ final class AuthController
 
     /**
      * Réémet un jeton tant que l'actuel est encore valide.
-     * Squelette volontairement simple — une vraie rotation de refresh
-     * token (table dédiée, révocation) est à ajouter avant la prod.
+     *
+     * Le rôle et l'état du compte sont RELUS EN BASE (M-3), jamais recopiés du jeton : un compte
+     * désactivé ou rétrogradé ne peut plus renouveler son accès, qui s'éteint donc au plus tard à
+     * l'expiration du jeton courant (JWT_TTL_MINUTES) sans rotation du secret global. Une révocation
+     * immédiate (< TTL) nécessiterait un jti + liste de révocation, documenté dans le README.
      */
     public function refresh(Request $request, Response $response): Response
     {
@@ -137,8 +150,16 @@ final class AuthController
             return JsonResponse::error($response, 401, 'Jeton invalide ou expiré');
         }
 
+        $stmt = Database::connection()->prepare('SELECT role, is_active FROM users WHERE id = ?');
+        $stmt->execute([$claims['sub']]);
+        $user = $stmt->fetch();
+
+        if ($user === false || (int) $user['is_active'] !== 1) {
+            return JsonResponse::error($response, 401, 'Compte introuvable ou désactivé');
+        }
+
         return JsonResponse::ok($response, [
-            'token' => Jwt::issue($claims['sub'], $claims['role']),
+            'token' => Jwt::issue((int) $claims['sub'], $user['role']),
         ]);
     }
 }

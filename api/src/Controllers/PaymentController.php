@@ -9,9 +9,11 @@ use CinetPay\Language as CinetPayLanguage;
 use CinetPay\Request\CreatePaymentRequest as CinetPayCreatePaymentRequest;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Saveurs\Services\PaymentLedger;
 use Saveurs\Support\CinetPayClient;
 use Saveurs\Support\Database;
 use Saveurs\Support\JsonResponse;
+use Saveurs\Support\Log;
 
 final class PaymentController
 {
@@ -48,6 +50,8 @@ final class PaymentController
 
         $client = CinetPayClient::client();
         if ($client === null) {
+            Log::app()->error('cinetpay.not_configured', ['order_id' => (int) $order['id'], 'action' => 'payment_intent']);
+
             return JsonResponse::error(
                 $response,
                 503,
@@ -74,7 +78,7 @@ final class PaymentController
                 amount: intdiv((int) $order['total_cents'], 100),
                 successUrl: "{$frontUrl}/suivi.html?order={$order['id']}",
                 failedUrl: "{$frontUrl}/suivi.html?order={$order['id']}&payment=failed",
-                notifyUrl: "{$apiUrl}/webhooks/cinetpay",
+                notifyUrl: "{$apiUrl}/api/v1/webhooks/cinetpay",
                 language: CinetPayLanguage::French,
                 designation: "Commande Ayo #{$order['id']}",
                 clientFirstName: $order['first_name'],
@@ -82,12 +86,26 @@ final class PaymentController
                 clientEmail: $order['email'],
             ));
         } catch (\Throwable $e) {
+            Log::app()->error('cinetpay.payment_intent_failed', [
+                'order_id' => (int) $order['id'],
+                'merchant_transaction_id' => $merchantTransactionId,
+                'amount_cents' => (int) $order['total_cents'],
+                'error' => $e->getMessage(),
+            ]);
+
             return JsonResponse::error($response, 502, 'Erreur CinetPay', $e->getMessage());
         }
 
         $db->prepare(
             'UPDATE orders SET payment_intent_id = ?, cinetpay_notify_token = ?, cinetpay_payment_url = ? WHERE id = ?'
         )->execute([$init->merchantTransactionId, $init->notifyToken, $init->paymentUrl, $order['id']]);
+
+        Log::transactions()->info('payment.intent_created', [
+            'order_id' => (int) $order['id'],
+            'client_id' => $userId,
+            'amount_cents' => (int) $order['total_cents'],
+            'payment_intent_id' => $init->merchantTransactionId,
+        ]);
 
         return JsonResponse::ok($response, ['payment_url' => $init->paymentUrl]);
     }
@@ -97,6 +115,8 @@ final class PaymentController
     {
         $client = CinetPayClient::client();
         if ($client === null) {
+            Log::app()->error('cinetpay.not_configured', ['action' => 'webhook']);
+
             return JsonResponse::error($response, 503, 'CinetPay non configuré');
         }
 
@@ -105,6 +125,13 @@ final class PaymentController
         try {
             $notification = $client->webhooks()->parse($raw);
         } catch (\Throwable $e) {
+            // Corps illisible : soit CinetPay a changé de format, soit quelqu'un sonde
+            // l'endpoint. Dans les deux cas on veut le savoir.
+            Log::app()->warning('webhook.unparseable', [
+                'error' => $e->getMessage(),
+                'body_size' => strlen($raw),
+            ]);
+
             return JsonResponse::error($response, 400, 'Webhook CinetPay invalide');
         }
 
@@ -125,25 +152,36 @@ final class PaymentController
         $order = $stmt->fetch();
 
         if ($order === false || $order['cinetpay_notify_token'] === null) {
+            Log::app()->warning('webhook.unknown_payment', ['merchant_transaction_id' => $merchantTransactionId]);
+
             return JsonResponse::error($response, 404, 'Commande introuvable');
         }
 
         try {
             $confirmed = $client->webhooks()->handlePayment($raw, $order['cinetpay_notify_token']);
         } catch (\Throwable $e) {
+            // Signature invalide : c'est le scénario "quelqu'un essaie de faire passer une
+            // commande pour payée". Niveau error, jamais silencieux.
+            Log::app()->error('webhook.verification_failed', [
+                'kind' => 'payment',
+                'order_id' => (int) $order['id'],
+                'merchant_transaction_id' => $merchantTransactionId,
+                'error' => $e->getMessage(),
+            ]);
+
             return JsonResponse::error($response, 400, 'Vérification du webhook CinetPay échouée');
         }
 
         $orderId = (int) $order['id'];
 
+        // PaymentLedger porte l'idempotence : CinetPay rejoue ses notifications, et le script
+        // de réconciliation peut arriver en même temps sur la même transaction.
         if ($confirmed->isSuccessful()) {
-            $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "payment_succeeded", "system")')
-                ->execute([$orderId]);
+            // Montant réellement débité (réponse canonique CinetPay, XOF entier → cents internes ×100).
+            $paidCents = isset($confirmed->payment->raw['amount']) ? (int) round((float) $confirmed->payment->raw['amount'] * 100) : null;
+            PaymentLedger::markPaid($orderId, 'webhook', $paidCents);
         } elseif ($confirmed->isFinal()) {
-            $db->prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'pending'")
-                ->execute([$orderId]);
-            $db->prepare('INSERT INTO order_events (order_id, status, actor_type) VALUES (?, "payment_failed", "system")')
-                ->execute([$orderId]);
+            PaymentLedger::markPaymentFailed($orderId, 'webhook', $confirmed->payment->status);
         }
 
         return JsonResponse::ok($response, ['received' => true]);
@@ -157,18 +195,31 @@ final class PaymentController
         $payout = $stmt->fetch();
 
         if ($payout === false || $payout['cinetpay_notify_token'] === null) {
+            Log::app()->warning('webhook.unknown_transfer', ['merchant_transaction_id' => $merchantTransactionId]);
+
             return JsonResponse::error($response, 404, 'Virement introuvable');
         }
 
         try {
             $confirmed = $client->webhooks()->handleTransfer($raw, $payout['cinetpay_notify_token']);
         } catch (\Throwable $e) {
+            Log::app()->error('webhook.verification_failed', [
+                'kind' => 'transfer',
+                'payout_id' => (int) $payout['id'],
+                'merchant_transaction_id' => $merchantTransactionId,
+                'error' => $e->getMessage(),
+            ]);
+
             return JsonResponse::error($response, 400, 'Vérification du webhook CinetPay échouée');
         }
 
         if ($confirmed->isFinal()) {
-            $db->prepare('UPDATE payouts SET statut = ? WHERE id = ?')
-                ->execute([$confirmed->isSuccessful() ? 'sent' : 'failed', $payout['id']]);
+            PaymentLedger::settlePayout(
+                (int) $payout['id'],
+                $confirmed->isSuccessful(),
+                $confirmed->isSuccessful() ? null : "CinetPay: {$confirmed->transfer->status}",
+                'webhook'
+            );
         }
 
         return JsonResponse::ok($response, ['received' => true]);

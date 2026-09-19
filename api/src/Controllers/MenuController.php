@@ -153,7 +153,9 @@ final class MenuController
             return JsonResponse::error($response, 422, 'Aucun champ modifiable fourni');
         }
 
-        $set = implode(', ', array_map(fn ($f) => "{$f} = ?", array_keys($fields)));
+        // Colonnes qualifiées par io. : `name` existe aussi dans menu_items, MySQL rejetait sinon
+        // l'UPDATE multi-tables pour ambiguïté (erreur 1052).
+        $set = implode(', ', array_map(fn ($f) => "io.{$f} = ?", array_keys($fields)));
         $args = array_values($fields);
         $args[] = $routeArgs['optionId'];
         $args[] = $routeArgs['itemId'];

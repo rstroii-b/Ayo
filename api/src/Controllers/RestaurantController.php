@@ -306,8 +306,10 @@ final class RestaurantController
     private function findRestaurant(string $id): ?array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT r.id, r.owner_id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.photo_url, r.business_type,
-                    r.delivery_mode, r.commission_pct, COALESCE(z.currency, "XOF") AS currency
+            // L-4 : endpoints publics (show/menu). On n'expose ni owner_id (identifiant interne
+            // d'utilisateur) ni commission_pct (donnée commerciale confidentielle, variable par resto).
+            'SELECT r.id, r.name, r.slug, r.adresse, r.lat, r.lng, r.cuisine_origine, r.photo_url, r.business_type,
+                    r.delivery_mode, COALESCE(z.currency, "XOF") AS currency
              FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id
              WHERE r.id = ? AND r.is_active = 1'
         );

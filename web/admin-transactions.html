@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transactions — Ayo Admin</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/backoffice.css">
+<link rel="icon" href="/assets/icons/favicon-32.png">
+</head>
+<body class="desktop">
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="logo">
+        <img src="/assets/logo.png" alt="Ayo" style="width:140px;height:auto;">
+      </div>
+      <a class="navitem" href="/admin.html">Vérification KYC</a>
+      <a class="navitem active" href="/admin-transactions.html">Transactions</a>
+      <div class="foot">Administration</div>
+      <button class="navitem" id="logout-btn" type="button" style="border:none;background:none;cursor:pointer;width:100%;font-family:inherit;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        Déconnexion
+      </button>
+    </nav>
+
+    <main class="main">
+      <div class="dtopbar">
+        <h1>Supervision des transactions</h1>
+        <span class="pill warn" id="live-pill">Connexion…</span>
+      </div>
+
+      <div class="dcontent">
+        <div id="metrics"><p class="state-msg">Chargement…</p></div>
+
+        <h2 class="sectitle" style="margin-top:28px;">Alertes de fraude</h2>
+        <div class="field" style="max-width:220px;margin-bottom:14px;">
+          <select id="fraud-filter">
+            <option value="open" selected>Ouvertes</option>
+            <option value="all">Toutes</option>
+            <option value="dismissed">Écartées</option>
+          </select>
+        </div>
+        <div id="fraud-list"><p class="state-msg">Chargement…</p></div>
+
+        <h2 class="sectitle" style="margin-top:28px;">Virements</h2>
+        <div class="field" style="max-width:220px;margin-bottom:14px;">
+          <select id="payout-filter">
+            <option value="failed" selected>Échoués</option>
+            <option value="pending">En attente</option>
+            <option value="sent">Envoyés</option>
+            <option value="">Tous</option>
+          </select>
+        </div>
+        <div id="payouts-list"><p class="state-msg">Chargement…</p></div>
+
+        <h2 class="sectitle" style="margin-top:28px;">Paiements clients</h2>
+        <div class="field" style="max-width:220px;margin-bottom:14px;">
+          <select id="payment-filter">
+            <option value="" selected>Tous</option>
+            <option value="paid">Payés</option>
+            <option value="unpaid">Non encaissés</option>
+            <option value="failed">Échoués</option>
+          </select>
+        </div>
+        <div id="transactions-list"><p class="state-msg">Chargement…</p></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="audit-overlay" class="modal-overlay" hidden style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:50;">
+    <div class="cart-block" style="max-width:560px;width:90%;max-height:85vh;overflow:auto;padding:20px;">
+      <div id="audit-body"></div>
+      <button type="button" class="btn btn-ghost" id="audit-close" style="margin-top:14px;">Fermer</button>
+    </div>
+  </div>
+
+  <script src="https://js.pusher.com/8.4/pusher.min.js"></script>
+  <script type="module" src="./js/pages/admin-transactions.js"></script>
+</body>
+</html>

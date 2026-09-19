@@ -122,6 +122,20 @@ function bucketFor(status) {
   return status;
 }
 
+const PAYMENT_PILL = {
+  paid: { cls: 'ok', label: 'Payée' },
+  failed: { cls: 'bad', label: 'Paiement échoué' },
+  unpaid: { cls: 'warn', label: 'Non encaissée' },
+};
+
+/** L'encaissement se joue hors de l'app (page CinetPay) : sans ce repère, le restaurant
+ *  préparait des commandes jamais payées. Mis à jour en direct par l'événement order-updated. */
+function paymentPillHtml(paymentStatus) {
+  const pill = PAYMENT_PILL[paymentStatus] ?? PAYMENT_PILL.unpaid;
+
+  return `<span class="pill ${pill.cls}" style="padding:2px 9px;font-size:10.5px;">${pill.label}</span>`;
+}
+
 function orderCardHtml(order, columnKey) {
   // MySQL stocke created_at en heure locale du serveur (pas de fuseau) — on l'interprète
   // comme locale ici aussi plutôt que de forcer UTC, pour ne pas décaler le calcul.
@@ -144,7 +158,7 @@ function orderCardHtml(order, columnKey) {
 
   return `
     <div class="ocard ${COLUMNS.find((c) => c.key === columnKey).cls}">
-      <div class="crow"><span class="code">#SV-${order.id}</span><span class="state-msg">${elapsedMin} min</span></div>
+      <div class="crow"><span class="code">#SV-${order.id}</span>${paymentPillHtml(order.payment_status)}<span class="state-msg">${elapsedMin} min</span></div>
       <div class="client">${escapeHtml(order.client_first_name)}</div>
       <div class="items">${escapeHtml(order.items_summary)}</div>
       ${order.note_livreur ? `<div class="note">"${escapeHtml(order.note_livreur)}"</div>` : ''}

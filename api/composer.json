@@ -12,7 +12,8 @@
     "guzzlehttp/guzzle": "^7.8 || ^8.0",
     "pusher/pusher-php-server": "^7.3",
     "lbuchs/webauthn": "^2.2",
-    "cinetpay-dev/cinetpay-php": "^3.0"
+    "cinetpay-dev/cinetpay-php": "^3.0",
+    "monolog/monolog": "^3.6"
   },
   "autoload": {
     "psr-4": {

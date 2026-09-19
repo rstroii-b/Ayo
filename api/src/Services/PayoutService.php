@@ -8,6 +8,7 @@ use CinetPay\Currency as CinetPayCurrency;
 use CinetPay\Request\CreateTransferRequest as CinetPayCreateTransferRequest;
 use Saveurs\Support\CinetPayClient;
 use Saveurs\Support\Database;
+use Saveurs\Support\Log;
 
 /**
  * Déclenche les deux virements à la livraison — voir §5 :
@@ -23,7 +24,7 @@ final class PayoutService
         $db = Database::connection();
 
         $stmt = $db->prepare(
-            'SELECT o.subtotal_cents, o.delivery_fee_cents, o.driver_id,
+            'SELECT o.subtotal_cents, o.delivery_fee_cents, o.driver_id, o.payment_status,
                     r.id AS restaurant_id,
                     r.mobile_money_operator AS restaurant_mm_operator,
                     r.mobile_money_number AS restaurant_mm_number,
@@ -39,6 +40,32 @@ final class PayoutService
         $order = $stmt->fetch();
 
         if ($order === false) {
+            Log::app()->error('payout.order_not_found', ['order_id' => $orderId]);
+
+            return;
+        }
+
+        // Garde-fou de dernier ressort (H-1) : jamais de virement pour une commande non encaissée,
+        // même si un appelant oubliait le contrôle en amont. La perte financière la plus grave de
+        // l'app passait précisément par ce chemin.
+        if (($order['payment_status'] ?? 'unpaid') !== 'paid') {
+            Log::transactions()->error('payout.blocked_unpaid', [
+                'order_id' => $orderId,
+                'payment_status' => $order['payment_status'] ?? null,
+            ]);
+
+            return;
+        }
+
+        // Idempotence en amont de tout appel CinetPay (M-1) : si des virements existent déjà pour
+        // cette commande, on ne rejoue rien. C'est la vraie protection — la contrainte unique
+        // uq_payouts_order_recipient n'est que le dernier filet, et elle se déclencherait APRÈS
+        // que l'argent soit parti.
+        $already = $db->prepare('SELECT COUNT(*) FROM payouts WHERE order_id = ?');
+        $already->execute([$orderId]);
+        if ((int) $already->fetchColumn() > 0) {
+            Log::app()->info('payout.already_released', ['order_id' => $orderId]);
+
             return;
         }
 
@@ -95,9 +122,16 @@ final class PayoutService
                 amount: intdiv($amountCents, 100),
                 paymentMethod: $operator,
                 reason: "Commande Ayo #{$orderId}",
-                notifyUrl: "{$apiUrl}/webhooks/cinetpay",
+                notifyUrl: "{$apiUrl}/api/v1/webhooks/cinetpay",
             ));
         } catch (\Throwable $e) {
+            Log::app()->error('cinetpay.transfer_failed', [
+                'order_id' => $orderId,
+                'recipient_type' => $recipientType,
+                'merchant_transaction_id' => $merchantTransactionId,
+                'amount_cents' => $amountCents,
+                'error' => $e->getMessage(),
+            ]);
             $this->recordPayout($orderId, $recipientType, $restaurantId, $driverId, $amountCents, 'failed', failureReason: $e->getMessage());
 
             return;
@@ -127,12 +161,28 @@ final class PayoutService
         ?string $cinetpayNotifyToken = null,
         ?string $failureReason = null
     ): void {
-        Database::connection()->prepare(
+        $db = Database::connection();
+
+        $db->prepare(
             'INSERT INTO payouts (order_id, recipient_type, restaurant_id, driver_id, amount_cents, statut, cinetpay_transfer_id, cinetpay_notify_token, failure_reason)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $orderId, $recipientType, $restaurantId, $driverId, $amountCents, $statut,
             $cinetpayTransferId, $cinetpayNotifyToken, $failureReason,
         ]);
+
+        // Un virement échoué ne doit plus dormir en base sans que personne ne le voie :
+        // il part dans la piste d'audit et sur le canal de supervision admin.
+        PaymentLedger::recordPayoutEvent(
+            (int) $db->lastInsertId(),
+            $statut,
+            [
+                'order_id' => $orderId,
+                'recipient_type' => $recipientType,
+                'amount_cents' => $amountCents,
+            ],
+            $failureReason,
+            'payout_release'
+        );
     }
 }

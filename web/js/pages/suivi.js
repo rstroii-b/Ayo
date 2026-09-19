@@ -172,6 +172,7 @@ if (!orderId) {
   const channel = realtimeClient().subscribe(`private-order.${orderId}`);
   channel.bind('status-updated', poll);
   channel.bind('driver-assigned', poll);
+  channel.bind('payment-updated', poll);
   pollTimer = setInterval(poll, 15000);
 
   // Moment le plus pertinent pour proposer les notifications — ne redemande jamais si

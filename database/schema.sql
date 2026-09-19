@@ -16,6 +16,9 @@ CREATE TABLE users (
   first_name        VARCHAR(100) NOT NULL,
   last_name         VARCHAR(100) NOT NULL,
   role              ENUM('client','restaurant_owner','driver','admin') NOT NULL,
+  -- Compte désactivable (M-3) : un compte inactif ne peut plus se connecter ni renouveler son
+  -- jeton, ce qui coupe l'accès dans la durée de vie du jeton (30 min) sans rotation de secret.
+  is_active         TINYINT(1) NOT NULL DEFAULT 1,
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_users_email (email)
@@ -143,6 +146,10 @@ CREATE TABLE orders (
   delivery_fee_cents  INT UNSIGNED NOT NULL,
   tva_cents           INT UNSIGNED NOT NULL,
   total_cents         INT UNSIGNED NOT NULL,
+  -- État de l'encaissement, distinct de "status" qui ne décrit que la livraison : sans cette
+  -- colonne, répondre à "cette commande est-elle payée ?" imposait de fouiller order_events.
+  payment_status      ENUM('unpaid','paid','failed') NOT NULL DEFAULT 'unpaid',
+  paid_at             DATETIME NULL,
   payment_intent_id   VARCHAR(64) NULL,     -- merchant_transaction_id CinetPay
   cinetpay_notify_token VARCHAR(255) NULL,  -- pour vérifier l'authenticité du webhook CinetPay
   cinetpay_payment_url VARCHAR(500) NULL,   -- pour renvoyer le même lien de paiement si le client recharge la page
@@ -156,10 +163,12 @@ CREATE TABLE orders (
   ready_at            DATETIME NULL,
   picked_up_at        DATETIME NULL,
   delivered_at        DATETIME NULL,
-  UNIQUE KEY uq_orders_idempotency (idempotency_key),
+  -- Unicité composite (L-2) : la même clé chez deux clients distincts ne doit pas se percuter.
+  UNIQUE KEY uq_orders_idempotency (client_id, idempotency_key),
   KEY ix_orders_restaurant_status (restaurant_id, status),
   KEY ix_orders_driver_status (driver_id, status),
   KEY ix_orders_client (client_id),
+  KEY ix_orders_payment_status (payment_status, created_at),
   CONSTRAINT fk_order_client FOREIGN KEY (client_id) REFERENCES users(id),
   CONSTRAINT fk_order_restaurant FOREIGN KEY (restaurant_id) REFERENCES restaurants(id),
   CONSTRAINT fk_order_driver FOREIGN KEY (driver_id) REFERENCES users(id)
@@ -215,6 +224,9 @@ CREATE TABLE payouts (
   KEY ix_payouts_driver (driver_id),
   KEY ix_payouts_restaurant (restaurant_id),
   KEY ix_payouts_order (order_id),
+  KEY ix_payouts_statut (statut, created_at),
+  -- Filet anti-double-virement (M-1) : au plus une ligne par bénéficiaire et par commande.
+  UNIQUE KEY uq_payouts_order_recipient (order_id, recipient_type),
   CONSTRAINT fk_payout_driver FOREIGN KEY (driver_id) REFERENCES users(id),
   CONSTRAINT fk_payout_restaurant FOREIGN KEY (restaurant_id) REFERENCES restaurants(id),
   CONSTRAINT fk_payout_order FOREIGN KEY (order_id) REFERENCES orders(id)
@@ -260,6 +272,42 @@ CREATE TABLE webauthn_challenges (
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ix_webauthn_challenge_user (user_id),
   CONSTRAINT fk_webauthn_challenge_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------
+-- Détection de fraude & journal de sécurité
+-- ---------------------------------------------------------------
+
+-- Journal des actions sensibles (inscription, connexion, commande, changement mobile money…)
+-- avec le contexte réseau. Alimente la détection multi-comptes (même IP / même empreinte) et
+-- l'investigation a posteriori. Volontairement séparé des logs fichier : requêtable en SQL.
+CREATE TABLE security_events (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id           BIGINT UNSIGNED NULL,
+  action            VARCHAR(40) NOT NULL,       -- ex: 'register', 'login', 'order_create', 'mobile_money_update'
+  ip                VARCHAR(45) NULL,           -- IPv4/IPv6
+  user_agent        VARCHAR(255) NULL,
+  meta_json         JSON NULL,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_secevents_user (user_id, created_at),
+  KEY ix_secevents_ip (ip, created_at),
+  KEY ix_secevents_action (action, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Alertes de fraude levées par FraudDetector. Une alerte non résolue remonte dans le panel admin.
+CREATE TABLE fraud_alerts (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  type              VARCHAR(50) NOT NULL,       -- ex: 'mobile_money_reuse', 'gps_teleport', 'impossible_delivery'
+  severity          ENUM('low','medium','high') NOT NULL DEFAULT 'medium',
+  user_id           BIGINT UNSIGNED NULL,       -- acteur concerné (livreur, client, restaurateur)
+  order_id          BIGINT UNSIGNED NULL,
+  detail            VARCHAR(255) NOT NULL,
+  meta_json         JSON NULL,
+  status            ENUM('open','reviewed','dismissed') NOT NULL DEFAULT 'open',
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_fraud_status (status, created_at),
+  KEY ix_fraud_type (type, created_at),
+  KEY ix_fraud_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 1;
