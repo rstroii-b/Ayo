@@ -52,7 +52,7 @@ async function load() {
         <a class="btn btn-primary" href="/index.html" style="margin-top:12px;">Découvrir des restaurants</a>
       `;
   } catch (error) {
-    content.innerHTML = `<p class="state-msg">Impossible de charger tes commandes (${error.message}).</p>`;
+    content.innerHTML = `<p class="state-msg">Impossible de charger tes commandes (${escapeHtml(error.message)}).</p>`;
   }
 }
 

@@ -22,12 +22,20 @@ final class AuthController
             }
         }
 
-        if (strlen($body['password']) < 8) {
+        $body['email'] = strtolower(trim($body['email']));
+        $body['first_name'] = trim($body['first_name']);
+        $body['last_name'] = trim($body['last_name']);
+
+        if (strlen($body['password']) < 8 || strlen($body['password']) > 72) {
             return JsonResponse::error($response, 422, 'Le mot de passe doit contenir au moins 8 caractères');
         }
 
-        if (!filter_var($body['email'], FILTER_VALIDATE_EMAIL)) {
+        if (!filter_var($body['email'], FILTER_VALIDATE_EMAIL) || strlen($body['email']) > 255) {
             return JsonResponse::error($response, 422, 'Adresse email invalide');
+        }
+
+        if ($body['first_name'] === '' || $body['last_name'] === '' || strlen($body['first_name']) > 80 || strlen($body['last_name']) > 80) {
+            return JsonResponse::error($response, 422, 'Nom ou prénom invalide');
         }
 
         if (!in_array($body['role'], ['client', 'restaurant_owner', 'driver'], true)) {
@@ -86,6 +94,8 @@ final class AuthController
         if (empty($body['email']) || empty($body['password']) || !is_string($body['email']) || !is_string($body['password'])) {
             return JsonResponse::error($response, 422, 'Email et mot de passe requis');
         }
+
+        $body['email'] = strtolower(trim($body['email']));
 
         $db = Database::connection();
         $stmt = $db->prepare('SELECT id, password_hash, role FROM users WHERE email = ?');

@@ -78,7 +78,7 @@ async function loadRestaurants({ businessType = 'food', region = '', q = '' } = 
       ? `<div class="bento-grid">${restaurants.map((r, i) => restaurantCardHtml(r, i === 0)).join('')}</div>`
       : `<p class="state-msg">${CATEGORY_COPY[businessType].empty}</p>`;
   } catch (error) {
-    list.innerHTML = `<p class="state-msg">Impossible de charger les commerces (${error.message}).</p>`;
+    list.innerHTML = `<p class="state-msg">Impossible de charger les commerces (${escapeHtml(error.message)}).</p>`;
   }
 }
 

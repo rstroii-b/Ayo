@@ -1,6 +1,11 @@
 import { apiFetch } from '../api.js';
 import { addItem, getCart, cartSubtotalCents, cartItemCount } from '../cart.js';
 import { formatMoney, escapeHtml, safeImageUrl } from '../format.js';
+import { getCurrentPosition } from '../geolocation.js';
+
+// Même repli que la liste (home.js) — sert à recalculer les mêmes frais/délai de livraison
+// ici que sur la carte restaurant, au lieu de les faire disparaître entre les deux écrans.
+const FALLBACK_POSITION = { lat: 5.3600, lng: -4.0083 };
 
 const restaurantId = new URLSearchParams(window.location.search).get('id');
 let restaurantName = '';
@@ -150,11 +155,43 @@ function restaurantHeaderHtml(restaurant) {
       <span class="summary-pill">${escapeHtml(restaurant.cuisine_origine || 'Cuisine africaine')}</span>
       <span class="summary-pill">${etaLow}-${etaHigh} min</span>
       <span class="summary-pill">${deliveryFee}</span>
+      ${restaurant.distance_km ? `<span class="summary-pill">${Number(restaurant.distance_km).toFixed(1)} km</span>` : ''}
     </div>
     <p class="state-msg" style="margin-top:8px;">${escapeHtml(restaurant.adresse)}</p>
   `;
 }
 
+// Élément qui avait le focus avant l'ouverture de la modale — pour le lui rendre à la
+// fermeture (sinon le focus retombe sur <body> et un utilisateur clavier perd son repère).
+let lastFocusedBeforeModal = null;
+
+function focusableInModal(modal) {
+  return [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.disabled && el.offsetParent !== null);
+}
+
+function trapModalFocus(event) {
+  if (event.key !== 'Tab') return;
+
+  const modal = document.querySelector('#item-modal-overlay .item-modal');
+  const focusable = focusableInModal(modal);
+  if (focusable.length === 0) return;
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+/** Ouvre la fiche produit (photo en grand, description, ingrédients) — même mécanique pour
+ * tous les types de commerce (repas, mode, meubles, épicerie), seuls description/ingrédients
+ * varient selon ce que le commerçant a renseigné. */
 function openItemModal(item) {
   const overlay = document.getElementById('item-modal-overlay');
   const photoUrl = safeImageUrl(item.photo_url);
@@ -172,16 +209,26 @@ function openItemModal(item) {
     </button>
   `;
 
+  lastFocusedBeforeModal = document.activeElement;
   overlay.hidden = false;
+  document.addEventListener('keydown', trapModalFocus);
+  // Le focus doit entrer dans la modale à l'ouverture (sinon Tab envoie vers un élément de
+  // la page caché derrière l'overlay) — le bouton de fermeture est un point d'entrée sûr.
+  document.getElementById('item-modal-close').focus();
 }
 
 function closeItemModal() {
   document.getElementById('item-modal-overlay').hidden = true;
+  document.removeEventListener('keydown', trapModalFocus);
+  lastFocusedBeforeModal?.focus();
 }
 
 document.getElementById('item-modal-close').addEventListener('click', closeItemModal);
 document.getElementById('item-modal-overlay').addEventListener('click', (event) => {
   if (event.target.id === 'item-modal-overlay') closeItemModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !document.getElementById('item-modal-overlay').hidden) closeItemModal();
 });
 document.getElementById('item-modal-body').addEventListener('click', (event) => {
   const btn = event.target.closest('#item-modal-add');
@@ -237,8 +284,11 @@ async function load() {
   }
 
   try {
+    const position = await getCurrentPosition({ fallback: FALLBACK_POSITION });
+    const params = new URLSearchParams({ lat: position.lat, lng: position.lng });
+
     const [restaurant, menu] = await Promise.all([
-      apiFetch(`/restaurants/${restaurantId}`),
+      apiFetch(`/restaurants/${restaurantId}?${params}`),
       apiFetch(`/restaurants/${restaurantId}/menu`),
     ]);
 
@@ -337,8 +387,13 @@ async function load() {
 
     renderCartBar();
   } catch (error) {
-    document.getElementById('restaurant-header').innerHTML =
-      `<p class="state-msg">Impossible de charger ce restaurant (${error.message}).</p>`;
+    // Message générique côté utilisateur — error.message peut être une chaîne technique
+    // ("Failed to fetch") sans intérêt pour un client, jamais interpolée directement ici.
+    document.getElementById('restaurant-header').innerHTML = `
+      <p class="state-msg">Connexion impossible. Vérifie ta connexion et réessaie.</p>
+      <button type="button" class="btn btn-ghost" id="retry-load-btn" style="margin-top:10px;">Réessayer</button>
+    `;
+    document.getElementById('retry-load-btn').addEventListener('click', load);
   }
 }
 

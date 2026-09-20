@@ -21,7 +21,7 @@ async function init() {
     if (error.status === 404) {
       window.location.href = '/backoffice.html';
     } else {
-      document.getElementById('stats-content').innerHTML = `<p class="state-msg">${error.message}</p>`;
+      document.getElementById('stats-content').innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
     }
   }
 }

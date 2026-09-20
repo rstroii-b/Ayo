@@ -235,7 +235,7 @@ async function refresh() {
       ? available.map(availableOrderHtml).join('')
       : '<p class="state-msg">Aucune commande disponible pour le moment.</p>';
   } catch (error) {
-    container.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    container.innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
   }
 }
 

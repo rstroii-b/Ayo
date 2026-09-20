@@ -257,7 +257,12 @@ final class RestaurantController
         return $restaurant;
     }
 
-    /** GET /restaurants/{id} */
+    /**
+     * GET /restaurants/{id} — avec ?lat=&lng= optionnels, renvoie aussi delivery_fee_cents/
+     * distance_km/eta_low_min/eta_high_min (même calcul que la liste), pour que la fiche
+     * restaurant affiche les mêmes frais/délai que la carte vue avant d'y entrer, au lieu de
+     * les faire disparaître entre les deux écrans.
+     */
     public function show(Request $request, Response $response, array $routeArgs): Response
     {
         $restaurant = $this->findRestaurant($routeArgs['id']);
@@ -266,7 +271,30 @@ final class RestaurantController
             return JsonResponse::error($response, 404, 'Restaurant introuvable');
         }
 
+        $params = $request->getQueryParams();
+        if (!empty($params['lat']) && !empty($params['lng'])) {
+            $restaurant = $this->withDeliveryEstimateForOne($restaurant, (float) $params['lat'], (float) $params['lng']);
+        }
+
         return JsonResponse::ok($response, $restaurant);
+    }
+
+    /** Même formule que withDeliveryEstimate (liste), pour un seul restaurant déjà chargé. */
+    private function withDeliveryEstimateForOne(array $restaurant, float $lat, float $lng): array
+    {
+        $stmt = Database::connection()->prepare(
+            'SELECT z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier
+             FROM restaurants r LEFT JOIN delivery_zones z ON z.id = r.zone_id WHERE r.id = ?'
+        );
+        $stmt->execute([$restaurant['id']]);
+        $zone = $stmt->fetch() ?: [];
+
+        $cosAngle = cos(deg2rad($lat)) * cos(deg2rad((float) $restaurant['lat']))
+            * cos(deg2rad((float) $restaurant['lng']) - deg2rad($lng))
+            + sin(deg2rad($lat)) * sin(deg2rad((float) $restaurant['lat']));
+        $distanceKm = 6371 * acos(min(1.0, max(-1.0, $cosAngle)));
+
+        return $this->withDeliveryEstimate(array_merge($restaurant, $zone, ['distance_km' => $distanceKm]));
     }
 
     /** GET /restaurants/{id}/menu */

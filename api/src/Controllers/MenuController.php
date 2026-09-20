@@ -21,7 +21,8 @@ final class MenuController
 
         $body = (array) $request->getParsedBody();
 
-        if (empty($body['name'])) {
+        if (!is_string($body['name'] ?? null) || trim($body['name']) === '' || strlen($body['name']) > 120
+            || !filter_var($body['sort_order'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 9999]])) {
             return JsonResponse::error($response, 422, 'Champ manquant', 'name');
         }
 
@@ -45,6 +46,13 @@ final class MenuController
             if (!isset($body[$field]) || $body[$field] === '') {
                 return JsonResponse::error($response, 422, 'Champ manquant', $field);
             }
+        }
+
+        if (!filter_var($body['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            || !is_string($body['name']) || trim($body['name']) === '' || strlen($body['name']) > 160
+            || !filter_var($body['price_cents'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 100000000]])
+            || !filter_var($body['vat_rate'] ?? 18, FILTER_VALIDATE_FLOAT, ['options' => ['min_range' => 0, 'max_range' => 100]])) {
+            return JsonResponse::error($response, 422, 'Article ou prix invalide');
         }
 
         $categoryCheck = Database::connection()->prepare(
@@ -118,7 +126,9 @@ final class MenuController
         }
 
         $body = (array) $request->getParsedBody();
-        if (empty($body['name'])) {
+        if (!is_string($body['name'] ?? null) || trim($body['name']) === '' || strlen($body['name']) > 120
+            || !filter_var($body['price_delta_cents'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => -100000000, 'max_range' => 100000000]])
+            || ($body['stock_quantity'] ?? null) !== null && !filter_var($body['stock_quantity'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 1000000]])) {
             return JsonResponse::error($response, 422, 'Champ manquant', 'name');
         }
 

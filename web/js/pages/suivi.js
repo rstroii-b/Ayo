@@ -158,7 +158,7 @@ async function poll() {
     }
   } catch (error) {
     document.getElementById('status-header').innerHTML =
-      `<p class="state-msg" style="padding:0 20px;">Impossible de charger la commande (${error.message}).</p>`;
+      `<p class="state-msg" style="padding:0 20px;">Impossible de charger la commande (${escapeHtml(error.message)}).</p>`;
   }
 }
 

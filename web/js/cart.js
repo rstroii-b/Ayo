@@ -1,4 +1,4 @@
-const CART_KEY = 'saveurs_cart';
+const CART_KEY = 'ayo_cart';
 
 function read() {
   try {
@@ -26,11 +26,23 @@ function lineKey(menuItemId, options = []) {
   return `${menuItemId}:${optionIds}`;
 }
 
-/** Ajoute un article — vide le panier si on change de commerce (une commande = un seul commerce). */
+/**
+ * Ajoute un article — vide le panier si on change de commerce (une commande = un seul
+ * commerce). Si le panier actuel contient déjà des articles d'un AUTRE commerce, on demande
+ * confirmation avant d'écraser silencieusement ce qui s'y trouve (sinon un simple retour en
+ * arrière + un tap réflexe sur un autre restaurant fait disparaître le panier sans prévenir).
+ * Retourne `null` si l'utilisateur annule — l'appelant ne doit alors rien changer à l'affichage.
+ */
 export function addItem(restaurantId, restaurantName, item) {
   const cart = read();
 
   if (cart.restaurantId !== null && cart.restaurantId !== restaurantId) {
+    if (cart.items.length > 0) {
+      const confirmed = window.confirm(
+        `Changer de commerce videra ton panier actuel chez ${cart.restaurantName ?? 'l’autre commerce'} (${cart.items.length} article${cart.items.length > 1 ? 's' : ''}) — continuer ?`
+      );
+      if (!confirmed) return null;
+    }
     cart.items = [];
   }
 
@@ -59,6 +71,20 @@ export function setQuantity(lineIndex, quantity) {
   write(cart);
 
   return cart;
+}
+
+/**
+ * Retire du panier toutes les lignes d'un article donné — utilisé quand le serveur rejette
+ * la commande au moment de payer parce que l'article est devenu indisponible entre temps
+ * (rupture décidée par le restaurateur pendant que le client composait son panier).
+ */
+export function removeItemById(menuItemId) {
+  const cart = read();
+  const removed = cart.items.filter((line) => line.menuItemId === menuItemId);
+  cart.items = cart.items.filter((line) => line.menuItemId !== menuItemId);
+  write(cart);
+
+  return { cart, removed };
 }
 
 export function clearCart() {

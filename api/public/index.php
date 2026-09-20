@@ -33,11 +33,16 @@ $app->addErrorMiddleware($debug, true, true);
 // CORS pour le développement local (front et API sur des ports différents).
 $app->add(function ($request, $handler) {
     $response = $handler->handle($request);
+    $origin = $_ENV['CORS_ORIGIN'] ?? '';
 
     return $response
-        ->withHeader('Access-Control-Allow-Origin', $_ENV['CORS_ORIGIN'] ?? '*')
+        ->withHeader('Access-Control-Allow-Origin', $origin)
+        ->withHeader('Vary', 'Origin')
         ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS')
+        ->withHeader('X-Content-Type-Options', 'nosniff')
+        ->withHeader('X-Frame-Options', 'DENY')
+        ->withHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 });
 $app->options('/{routes:.+}', fn ($request, $response) => $response);
 

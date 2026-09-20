@@ -1,4 +1,4 @@
-const CACHE = 'ayo-static-v5';
+const CACHE = 'ayo-static-v6';
 
 const PRECACHE_URLS = [
   '/css/app.css',

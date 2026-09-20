@@ -1,7 +1,7 @@
 import { apiFetch } from '../api.js';
 import { requireLogin } from '../auth.js';
 import { getAddress } from '../address.js';
-import { getCart, setQuantity, cartSubtotalCents, clearCart } from '../cart.js';
+import { getCart, setQuantity, cartSubtotalCents, clearCart, removeItemById } from '../cart.js';
 import { formatMoney, escapeHtml } from '../format.js';
 import { getCurrentPosition } from '../geolocation.js';
 
@@ -142,6 +142,24 @@ async function startCheckout() {
       setTimeout(() => { window.location.href = `/login.html?next=${encodeURIComponent('/panier.html')}`; }, 1800);
       return;
     }
+    // "Article indisponible" (422) : un plat a été retiré/mis en rupture par le restaurateur
+    // pendant que le client composait son panier — le serveur bloque déjà le paiement (bonne
+    // chose), mais error.detail n'est qu'un id numérique brut ("42") : sans ce cas spécial,
+    // c'est CE chiffre seul qui s'affichait comme message d'erreur. On identifie l'article par
+    // son nom depuis le panier local, le retire, et laisse le client réessayer avec le reste.
+    if (error.message === 'Article indisponible' && error.detail) {
+      const menuItemId = Number(error.detail);
+      const { removed } = removeItemById(menuItemId);
+      const name = removed[0]?.name ?? 'Un article';
+      errorEl.textContent = `${name} n'est plus disponible et a été retiré de ton panier — vérifie ta commande et réessaie.`;
+      errorEl.hidden = false;
+      btn.disabled = false;
+      btn.textContent = 'Commander';
+      renderCart();
+
+      return;
+    }
+
     errorEl.textContent = error.detail ?? error.message;
     errorEl.hidden = false;
     btn.disabled = false;

@@ -46,7 +46,7 @@ async function loadDrivers() {
       </div>
     `;
   } catch (error) {
-    list.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    list.innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -104,7 +104,7 @@ async function openModal(driverId) {
       decide(driverId, 'rejected', reason || undefined);
     });
   } catch (error) {
-    body.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    body.innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
   }
 }
 

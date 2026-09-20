@@ -32,7 +32,7 @@ async function init() {
       document.getElementById('setup-block').hidden = false;
       wireSetupForm();
     } else {
-      document.querySelector('.dcontent').innerHTML = `<p class="state-msg">${error.message}</p>`;
+      document.querySelector('.dcontent').innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
     }
   }
 }
@@ -174,7 +174,7 @@ async function loadBoard() {
     document.getElementById('nav-count').hidden = orders.length === 0;
     document.getElementById('nav-count').textContent = orders.length;
   } catch (error) {
-    board.innerHTML = `<p class="state-msg">${error.message}</p>`;
+    board.innerHTML = `<p class="state-msg">${escapeHtml(error.message)}</p>`;
   }
 }
 

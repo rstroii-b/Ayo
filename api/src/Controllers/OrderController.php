@@ -49,7 +49,7 @@ final class OrderController
     public function create(Request $request, Response $response): Response
     {
         $idempotencyKey = $request->getHeaderLine('Idempotency-Key');
-        if ($idempotencyKey === '') {
+        if ($idempotencyKey === '' || strlen($idempotencyKey) > 100 || !preg_match('/^[A-Za-z0-9_-]+$/', $idempotencyKey)) {
             return JsonResponse::error($response, 422, "L'en-tête Idempotency-Key est requis");
         }
 
@@ -64,12 +64,30 @@ final class OrderController
         $body = (array) $request->getParsedBody();
         $clientId = (int) $request->getAttribute('user_id');
 
-        if (empty($body['restaurant_id']) || empty($body['items']) || empty($body['delivery_address'])) {
+        if (empty($body['restaurant_id']) || !is_array($body['items'] ?? null) || $body['items'] === [] || !is_array($body['delivery_address'] ?? null)) {
             return JsonResponse::error($response, 422, 'restaurant_id, items et delivery_address sont requis');
         }
 
         $restaurantId = (int) $body['restaurant_id'];
         $address = $body['delivery_address'];
+
+        if ($restaurantId < 1 || count($body['items']) > 50
+            || !isset($address['lat'], $address['lng'])
+            || !is_numeric($address['lat']) || !is_numeric($address['lng'])
+            || (float) $address['lat'] < -90 || (float) $address['lat'] > 90
+            || (float) $address['lng'] < -180 || (float) $address['lng'] > 180
+            || (isset($address['label']) && (!is_string($address['label']) || strlen($address['label']) > 500))
+            || (isset($body['note']) && (!is_string($body['note']) || strlen($body['note']) > 500))) {
+            return JsonResponse::error($response, 422, 'Adresse, note ou restaurant invalide');
+        }
+
+        foreach ($body['items'] as $line) {
+            if (!is_array($line) || !isset($line['menu_item_id']) || !filter_var($line['menu_item_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+                || !isset($line['quantity']) || !filter_var($line['quantity'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 99]])
+                || (isset($line['option_ids']) && !is_array($line['option_ids']))) {
+                return JsonResponse::error($response, 422, 'Article ou quantité invalide');
+            }
+        }
 
         $restaurantStmt = $db->prepare(
             'SELECT r.lat, r.lng, z.base_fee_cents, z.price_per_km_cents, z.min_fee_cents, z.surge_multiplier

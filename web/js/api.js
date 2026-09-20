@@ -6,16 +6,16 @@ const API_BASE_URL = ['localhost', '127.0.0.1'].includes(window.location.hostnam
   : 'https://api-ayo.jobivoire.com/api/v1';
 
 export function getToken() {
-  return localStorage.getItem('saveurs_token');
+  return localStorage.getItem('ayo_token');
 }
 
 export function setToken(token) {
-  localStorage.setItem('saveurs_token', token);
+  localStorage.setItem('ayo_token', token);
   scheduleRefresh(token);
 }
 
 export function clearToken() {
-  localStorage.removeItem('saveurs_token');
+  localStorage.removeItem('ayo_token');
   clearTimeout(refreshTimer);
 }
 
